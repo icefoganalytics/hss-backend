@@ -164,7 +164,7 @@
 							</tr>
 
 							<tr v-if="dentalService.check_all_coverage">
-								<td>Do you have coverage for dental services under any other program, plan or insurance group? ? Check all that apply. </td>
+								<td>Do you have coverage for dental services under any other program, plan or insurance group? Check all that apply. </td>
 								<td>{{ (dentalService.check_all_coverage) }}</td>
 							</tr>
 
