@@ -16,7 +16,7 @@ export function authorize(roles: string[] = [], allowPending: boolean = false) {
     return (req: Request, res: Response, next: NextFunction) => {
         let currentUser = req.user as AuthUser;
 
-        if (!req.oidc.isAuthenticated() || !currentUser)
+        if (!req.auth || !currentUser)
             return res.status(401).send('Not authenticated');
 
         if (currentUser.status != USER_ACTIVE_STATUS && !allowPending)

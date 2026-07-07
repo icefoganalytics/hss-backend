@@ -105,7 +105,7 @@
 </template>
 <script>
 const axios = require("axios");
-import { DENTAL_DOWNLOAD_FILE_URL, DENTAL_DELETE_FILE } from "../../../urls.js";
+import { DENTAL_DOWNLOAD_FILE_URL } from "../../../urls.js";
 
 export default {
 	name: "FormAttachment",
@@ -222,34 +222,31 @@ export default {
 		},
 		downloadExistingFile(fileObj) {
 			axios
-			.get(DENTAL_DOWNLOAD_FILE_URL + fileObj.fileId)
+			.get(DENTAL_DOWNLOAD_FILE_URL + fileObj.fileId, { responseType: "blob" })
 			.then((resp) => {
-				this.generateDownload(resp.data.fileName);
+				this.saveBlob(resp);
 			})
 			.catch((err) => console.error(err));
 		},
-		generateDownload(file) {
-			axios({
-				url: "/" + file,
-				method: "GET",
-				responseType: "blob",
-			}).then((response) => {
-				const href = URL.createObjectURL(response.data);
-				const link = document.createElement("a");
-				link.href = href;
-				link.setAttribute("download", file);
-				document.body.appendChild(link);
-				link.click();
-
-				document.body.removeChild(link);
-				URL.revokeObjectURL(href);
-
-				axios.post(DENTAL_DELETE_FILE, {
-					params: {
-						file: file,
-					},
-				});
-			});
+		saveBlob(resp) {
+			// The API streams the file directly; derive the filename from the
+			// Content-Disposition header and save it — nothing to clean up.
+			let fileName = "download";
+			const disposition = resp.headers["content-disposition"];
+			if (disposition) {
+				const match = /filename="?([^"]+)"?/.exec(disposition);
+				if (match && match[1]) {
+					fileName = match[1];
+				}
+			}
+			const href = URL.createObjectURL(resp.data);
+			const link = document.createElement("a");
+			link.href = href;
+			link.setAttribute("download", fileName);
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			URL.revokeObjectURL(href);
 		},
 		deleteExistingFile(fileObj, index) {
 			if (!this.updatedFields.includes("PROOF_INCOME")) {

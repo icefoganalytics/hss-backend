@@ -1,37 +1,44 @@
-version: '3.7'
-
 services:
-  web:
-    build:
-      context: ./src/web
-      dockerfile: Dockerfile
-    env_file:
-      - ./src/api/.env.development
+  oracle-db:
+    image: container-registry.oracle.com/database/express:21.3.0-xe
     environment:
-      NODE_ENV: development
-    tty: true
+      - ORACLE_SID=XE
+      - ORACLE_PDB=XEPDB1
+      - ORACLE_PWD=Oracle123
     ports:
-      - '8080:8080'
+      - 1521:1521
     volumes:
-      - ./src/web:/usr/src/web
-    depends_on:
-      - api
-  api:
-    build:
-      context: ./src/api
-      dockerfile: Dockerfile
-    env_file:
-      - ./src/api/.env.development
-    environment:
-      NODE_ENV: development
-      DB_HOST: db
-      MAIL_HOST: 'host.docker.internal'
-      TS_NODE_HISTORY: '/tmp/.ts_node_repl_history'
-    tty: true
+      - oracle-data:/opt/oracle/oradata
+      - oracle-backup:/opt/oracle/backup
+      # Auto-build the schema on a FRESH volume: the wrapper runs once (image's
+      # setup dir), switches to XEPDB1, and runs the numbered scripts (mounted
+      # outside the setup dir so they aren't each executed in the wrong container).
+      # Paths are relative to this compose file (repo root).
+      - ./src/db/oracle/init/00_init.sql:/opt/oracle/scripts/setup/00_init.sql:ro
+      - ./src/db/oracle/scripts:/opt/oracle/hss-scripts:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "sqlplus",
+          "-L",
+          "sys/Oracle123@//localhost:1521/XEPDB1 as sysdba",
+          "@healthcheck.sql",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  redis:
+    image: redis:6.2.5-alpine
     ports:
-      - '3000:3000'
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
-      - 'host.docker.internal:172.17.0.1'
-    volumes:
-      - ./src/api:/usr/src/api
+      - 6379:6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+
+volumes:
+  oracle-data:
+  oracle-backup:

@@ -90,7 +90,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Only export to the shared GHA cache on trusted (non-PR) runs so that
+          # untrusted fork PRs cannot poison the cache consumed by main (audit MED-09).
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
 
 
       # Sign the resulting Docker image digest except on PRs.

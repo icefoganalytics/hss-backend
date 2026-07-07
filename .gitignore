@@ -109,3 +109,7 @@ dist
 ecosystem.config.js
 src/api/instant-client-tools.rpm
 src/api/instant-client.rpm
+
+# Oracle Instant Client binaries are fetched at build time, not committed (audit HIGH-07)
+instantclient_21_9/
+instantclient_*/

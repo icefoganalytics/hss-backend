@@ -3,12 +3,18 @@
 </template>
 
 <script>
-// this component can be configured to perform actions once the login process is completed
+// Handles the Auth0 redirect callback, then sends the user into the app.
 import router from "../router";
+import store from "../store";
 
 export default {
   name: "LoginComplete",
-  created() {
+  async created() {
+    try {
+      await store.dispatch("handleAuthCallback");
+    } catch (e) {
+      console.error(e);
+    }
     router.push("/");
   }
 };

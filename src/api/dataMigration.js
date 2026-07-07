@@ -848,7 +848,8 @@ async function main() {
 									let query = '';
 									if (array_file && array_file.length > 0) {
 										array_file.forEach((element) => {
-											query = query + " DBMS_LOB.APPEND(v_long_text, to_blob(utl_raw.cast_to_raw('" +element+"'))); ";
+											// Bind each chunk as a parameter instead of concatenating file data into the PL/SQL text (audit CRIT-02).
+											query = query + " DBMS_LOB.APPEND(v_long_text, to_blob(utl_raw.cast_to_raw(?))); ";
 										});
 
 										dataFiles.DENTAL_SERVICE_ID = dentalId.ID;
@@ -857,6 +858,7 @@ async function main() {
 										dataFiles.FILE_TYPE = valueFile.file_type;
 										dataFiles.FILE_SIZE = valueFile.file_size;
 										dataFiles.query = query;
+										dataFiles.chunks = array_file;
 
 										fileDataArray.push(dataFiles);
 									}
@@ -874,7 +876,7 @@ async function main() {
 											`
 											INSERT INTO ${SCHEMA_DENTAL}.DENTAL_SERVICE_FILES (DENTAL_SERVICE_ID, DESCRIPTION, FILE_NAME, FILE_TYPE, FILE_SIZE, FILE_DATA) VALUES (?,?,?,?,?,v_long_text);
 										END;
-									`, [fileData.DENTAL_SERVICE_ID, fileData.DESCRIPTION, fileData.FILE_NAME, fileData.FILE_TYPE, fileData.FILE_SIZE]);
+									`, [...fileData.chunks, fileData.DENTAL_SERVICE_ID, fileData.DESCRIPTION, fileData.FILE_NAME, fileData.FILE_TYPE, fileData.FILE_SIZE]);
 								}
 							}
 						}

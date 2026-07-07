@@ -4,7 +4,9 @@ import { body, param } from "express-validator";
 import { SubmissionStatusRepository } from "../repository/oracle/SubmissionStatusRepository";
 import knex from "knex";
 import { DB_CONFIG_MIDWIFERY, SCHEMA_MIDWIFERY, SCHEMA_GENERAL } from "../config";
-import { groupBy , helper } from "../utils";
+import { groupBy , helper, logger } from "../utils";
+import { checkPermissions } from "../middleware/permissions";
+import { ReturnValidationErrors } from "../middleware";
 let db = knex(DB_CONFIG_MIDWIFERY)
 
 var RateLimit = require('express-rate-limit');
@@ -26,8 +28,8 @@ const submissionStatusRepo = new SubmissionStatusRepository();
  * @param { action_value } action value.
  * @return json
  */
-midwiferyRouter.get("/submissions/:action_id/:action_value",[ param("action_id").notEmpty(), 
-  param("action_value").notEmpty()], async (req: Request, res: Response) => {
+midwiferyRouter.get("/submissions/:action_id/:action_value", checkPermissions("midwifery_view"), [ param("action_id").notEmpty(), 
+  param("action_value").notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         const actionId = req.params.action_id;
         const actionVal = req.params.action_value;
@@ -43,7 +45,7 @@ midwiferyRouter.get("/submissions/:action_id/:action_value",[ param("action_id")
             });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -58,8 +60,8 @@ midwiferyRouter.get("/submissions/:action_id/:action_value",[ param("action_id")
  * @param { action_value } action value.
  * @return json
  */
-midwiferyRouter.get("/submissions/status/:action_id/:action_value", [ param("action_id").notEmpty(), 
-  param("action_value").notEmpty()], async (req: Request, res: Response) => {
+midwiferyRouter.get("/submissions/status/:action_id/:action_value", checkPermissions("midwifery_view"), [ param("action_id").notEmpty(), 
+  param("action_value").notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
 
@@ -71,7 +73,7 @@ midwiferyRouter.get("/submissions/status/:action_id/:action_value", [ param("act
         res.send({data: result});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -84,7 +86,7 @@ midwiferyRouter.get("/submissions/status/:action_id/:action_value", [ param("act
  *
  * @return json
  */
-midwiferyRouter.post("/", async (req: Request, res: Response) => {
+midwiferyRouter.post("/", checkPermissions("midwifery_view"), async (req: Request, res: Response) => {
     try {
         var dateFrom = req.body.params.dateFrom;
         var dateTo = req.body.params.dateTo;
@@ -203,7 +205,7 @@ midwiferyRouter.post("/", async (req: Request, res: Response) => {
         res.send({data: midwifery, dataStatus: midwiferyStatus, total: countSubmissions, all: countAll});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -217,7 +219,7 @@ midwiferyRouter.post("/", async (req: Request, res: Response) => {
  * @param {midwifery_id} id of request
  * @return json
  */
-midwiferyRouter.get("/validateRecord/:midwifery_id",[param("midwifery_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+midwiferyRouter.get("/validateRecord/:midwifery_id", checkPermissions("midwifery_view"), [param("midwifery_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         var midwifery_id = Number(req.params.midwifery_id);
         var midwifery = Object();
@@ -242,7 +244,7 @@ midwiferyRouter.get("/validateRecord/:midwifery_id",[param("midwifery_id").isInt
         res.json({ status: 200, flagMidwifery: flagExists, message: message, type: type});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -256,7 +258,7 @@ midwiferyRouter.get("/validateRecord/:midwifery_id",[param("midwifery_id").isInt
  * @param {midwifery_id} id of request
  * @return json
  */
-midwiferyRouter.get("/show/:midwifery_id",[param("midwifery_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+midwiferyRouter.get("/show/:midwifery_id", checkPermissions("midwifery_view"), [param("midwifery_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         var midwiferyStatus = Array();
         let midwifery_id = Number(req.params.midwifery_id);
@@ -380,7 +382,7 @@ midwiferyRouter.get("/show/:midwifery_id",[param("midwifery_id").isInt().notEmpt
         res.json({ midwifery: midwifery, options: midwiferyOptions, fileName:fileName, midwiferyStatusClosed: statusMidwifery.id ,  dataStatus: midwiferyStatus});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -538,10 +540,10 @@ midwiferyRouter.post("/store", async (req: Request, res: Response) => {
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 404,
-            message: 'Request could not be processed ' + e
+            message: 'Request could not be processed'
         });
     }
 });
@@ -552,7 +554,7 @@ midwiferyRouter.post("/store", async (req: Request, res: Response) => {
  * @param {request}
  * @return file
  */
-midwiferyRouter.post("/export", async (req: Request, res: Response) => {
+midwiferyRouter.post("/export", checkPermissions("midwifery_view"), async (req: Request, res: Response) => {
     try {
         var requests = req.body.params.requests;
         var dateFrom = req.body.params.dateFrom;
@@ -778,7 +780,7 @@ midwiferyRouter.post("/export", async (req: Request, res: Response) => {
         res.json({ status:200, data:midwifery, fileName:fileName });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -792,7 +794,7 @@ midwiferyRouter.post("/export", async (req: Request, res: Response) => {
  * @param {midwifery_id} id of request
  * @return json
  */
-midwiferyRouter.patch("/changeStatus", async (req: Request, res: Response) => {
+midwiferyRouter.patch("/changeStatus", checkPermissions("midwifery_update"), [body("params.requests").isArray({ min: 1 })], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         var midwifery_id = req.body.params.requests;
         var status_id = req.body.params.requestStatus;
@@ -832,7 +834,7 @@ midwiferyRouter.patch("/changeStatus", async (req: Request, res: Response) => {
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed change'
@@ -840,7 +842,7 @@ midwiferyRouter.patch("/changeStatus", async (req: Request, res: Response) => {
     }
 });
 
-midwiferyRouter.post("/duplicates", async (req: Request, res: Response) => {
+midwiferyRouter.post("/duplicates", checkPermissions("midwifery_view"), async (req: Request, res: Response) => {
     try {
         var midwiferyOriginal = Object();
         var midwiferyDuplicate = Object();
@@ -929,7 +931,7 @@ midwiferyRouter.post("/duplicates", async (req: Request, res: Response) => {
         res.send({data: midwifery});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -944,7 +946,7 @@ midwiferyRouter.post("/duplicates", async (req: Request, res: Response) => {
  * @param id of request
  * @return json
  */
-midwiferyRouter.get("/duplicates/details/:duplicate_id",[param("duplicate_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+midwiferyRouter.get("/duplicates/details/:duplicate_id", checkPermissions("midwifery_view"), [param("duplicate_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         let duplicate_id = Number(req.params.duplicate_id);
         var midwifery = Object();
@@ -1100,7 +1102,7 @@ midwiferyRouter.get("/duplicates/details/:duplicate_id",[param("duplicate_id").i
         res.json({ midwifery: midwifery, midwiferyDuplicate: midwiferyDuplicate, options: midwiferyOptions});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -1114,7 +1116,7 @@ midwiferyRouter.get("/duplicates/details/:duplicate_id",[param("duplicate_id").i
  * @param {duplicate_id} id of warning
  * @return json
  */
-midwiferyRouter.get("/duplicates/validateWarning/:duplicate_id",[param("duplicate_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+midwiferyRouter.get("/duplicates/validateWarning/:duplicate_id", checkPermissions("midwifery_view"), [param("duplicate_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         var duplicate_id = Number(req.params.duplicate_id);
         var warning = Object();
@@ -1138,7 +1140,7 @@ midwiferyRouter.get("/duplicates/validateWarning/:duplicate_id",[param("duplicat
         res.json({ status: 200, flagWarning: flagExists, message: message, type: type});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -1153,7 +1155,7 @@ midwiferyRouter.get("/duplicates/validateWarning/:duplicate_id",[param("duplicat
  * @param {request}
  * @return json
  */
-midwiferyRouter.patch("/duplicates/primary", async (req: Request, res: Response) => {
+midwiferyRouter.patch("/duplicates/primary", checkPermissions("midwifery_update"), async (req: Request, res: Response) => {
 
     try {
         var warning = Number(req.body.params.warning);
@@ -1231,7 +1233,7 @@ midwiferyRouter.patch("/duplicates/primary", async (req: Request, res: Response)
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -1245,25 +1247,11 @@ midwiferyRouter.patch("/duplicates/primary", async (req: Request, res: Response)
  * @return id confirmation number
  */
 function getConfirmationNumber() {
-
-    var id = uniqid();
-
-    // Convert to uppercase for better readability.
-    id = id.toUpperCase().substring(0,9);
-
-    return id;
-}
-
-/**
- * Generate a unix timestamp with microseconds and returns as hexidecimal. This gives us a relatively high certainty of uniquess.
- *
- * @return raw confirmation number
- */
-function uniqid(prefix = "", random = false) {
-    const sec = Date.now() * 1000 + Math.random() * 1000;
-    const id = sec.toString(16).replace(/\./g, "").padEnd(14, "0");
-
-    return `${prefix}${id}${random ? `.${Math.trunc(Math.random() * 100000000)}`:""}`;
+    // Cryptographically-random 9-char confirmation code. Replaces the previous
+    // timestamp + Math.random() "uniqid", which was guessable (see audit LOW-02).
+    // Format (9 uppercase hex chars) and length are unchanged.
+    const crypto = require("crypto");
+    return crypto.randomBytes(5).toString("hex").toUpperCase().substring(0, 9);
 }
 
 /**

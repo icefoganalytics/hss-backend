@@ -27,7 +27,9 @@ export const DB_PORT = process.env.DB_PORT || '';
 export const DB_NAME = process.env.DB_NAME || '';
 export const DB_SERVICE = process.env.DB_SERVICE || '';
 
-export const SKIP_PERMISSIONS = process.env.SKIP_PERMISSIONS || false;
+// Parse explicitly so SKIP_PERMISSIONS=false disables the bypass (a non-empty
+// string like "false" is truthy). Defaults to the secure value (bypass off).
+export const SKIP_PERMISSIONS = process.env.SKIP_PERMISSIONS === 'true';
 
 export const SCHEMA_CONSTELLATION = process.env.SCHEMA_CONSTELLATION || '';
 export const SCHEMA_MIDWIFERY = process.env.SCHEMA_MIDWIFERY || '';
@@ -38,6 +40,22 @@ export const SCHEMA_DENTAL = process.env.SCHEMA_DENTAL || '';
 export const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 export const REDIS_PASS = process.env.REDIS_PASS || '';
 export const REDIS_PORT = process.env.REDIS_PORT || '6379';
+
+// Dedicated session-signing secret. Falls back to REDIS_PASS only for backward
+// compatibility; set a distinct high-entropy SESSION_SECRET in every environment
+// so the session and Redis trust domains are not coupled (see audit MED-07).
+export const SESSION_SECRET = process.env.SESSION_SECRET || REDIS_PASS || '';
+
+// --- JWT / Auth0 (replaces the express-openid-connect session flow) ---
+// The API now validates Auth0-issued RS256 access tokens (Bearer) against the
+// IdP's JWKS rather than running a server-side OIDC login.
+export const AUTH_ISSUER = (process.env.ISSUER_BASE_URL || '').replace(/\/+$/, '');
+export const AUTH_AUDIENCE = process.env.AUTH_AUDIENCE || '';
+export const AUTH_JWKS_URI = process.env.AUTH_JWKS_URI || (AUTH_ISSUER ? `${AUTH_ISSUER}/.well-known/jwks.json` : '');
+// Auth0 access tokens do not carry email by default. Configure an Auth0 Action
+// to add it as a (namespaced) custom claim, then set AUTH_EMAIL_CLAIM to that
+// claim name. Falls back to a standard `email` claim if present.
+export const AUTH_EMAIL_CLAIM = process.env.AUTH_EMAIL_CLAIM || '';
 
 const postProcessToLowerCase = (result: any, queryContext: any) => {
   if (Array.isArray(result)) {

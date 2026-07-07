@@ -3,8 +3,9 @@ import { body, param } from "express-validator";
 import { SubmissionStatusRepository } from "../repository/oracle/SubmissionStatusRepository";
 import knex from "knex";
 import { DB_CONFIG_CONSTELLATION, SCHEMA_CONSTELLATION, SCHEMA_GENERAL } from "../config";
-import { groupBy, helper } from "../utils";
+import { groupBy, helper, logger } from "../utils";
 import { checkPermissions } from "../middleware/permissions";
+import { ReturnValidationErrors } from "../middleware";
 var RateLimit = require('express-rate-limit');
 var _ = require('lodash');
 let db = knex(DB_CONFIG_CONSTELLATION);
@@ -21,10 +22,10 @@ constellationRouter.use(RateLimit({
  * @param { action_value } action value.
  * @return json
  */
-constellationRouter.get("/submissions/:action_id/:action_value", [
+constellationRouter.get("/submissions/:action_id/:action_value", checkPermissions("constellation_view"), [
     param("action_id").notEmpty(), 
     param("action_value").notEmpty()
-], async (req: Request, res: Response) => {
+], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
         const submissionStatusRepo = new SubmissionStatusRepository();
@@ -42,7 +43,7 @@ constellationRouter.get("/submissions/:action_id/:action_value", [
             });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -57,10 +58,10 @@ constellationRouter.get("/submissions/:action_id/:action_value", [
  * @param { action_value } action value.
  * @return json
  */
-constellationRouter.get("/submissions/status/:action_id/:action_value", [
+constellationRouter.get("/submissions/status/:action_id/:action_value", checkPermissions("constellation_view"), [
     param("action_id").notEmpty(), 
     param("action_value").notEmpty()
-], async (req: Request, res: Response) => {
+], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
         const submissionStatusRepo = new SubmissionStatusRepository();
@@ -72,7 +73,7 @@ constellationRouter.get("/submissions/status/:action_id/:action_value", [
         res.send({data: result});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -85,7 +86,7 @@ constellationRouter.get("/submissions/status/:action_id/:action_value", [
  *
  * @return json
  */
-constellationRouter.post("/", async (req: Request, res: Response) => {
+constellationRouter.post("/", checkPermissions("constellation_view"), async (req: Request, res: Response) => {
     try {
         db = await helper.getOracleClient(db, DB_CONFIG_CONSTELLATION);
         const allowedSortOrders = ["ASC", "DESC"];
@@ -166,7 +167,7 @@ constellationRouter.post("/", async (req: Request, res: Response) => {
         var constellationStatus = await getAllStatus();
         res.send({data: constellationHealth, dataStatus: constellationStatus, total: countSubmissions, all: countAll});
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -180,7 +181,7 @@ constellationRouter.post("/", async (req: Request, res: Response) => {
  * @param {constellationHealth_id} id of request
  * @return json
  */
-constellationRouter.get("/validateRecord/:constellationHealth_id",[param("constellationHealth_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+constellationRouter.get("/validateRecord/:constellationHealth_id", checkPermissions("constellation_view"), [param("constellationHealth_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
         db = await helper.getOracleClient(db, DB_CONFIG_CONSTELLATION);
@@ -207,7 +208,7 @@ constellationRouter.get("/validateRecord/:constellationHealth_id",[param("conste
 
         res.json({ status: 200, flagConstellation: flagExists, message: message, type: type});
     } catch(e) {
-        console.log(e);
+        logger.error("Unhandled error in request handler", e);
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -221,7 +222,7 @@ constellationRouter.get("/validateRecord/:constellationHealth_id",[param("conste
  * @param {constellationHealth_id} id of request
  * @return json
  */
-constellationRouter.get("/show/:constellationHealth_id", checkPermissions("constellation_view"), [param("constellationHealth_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+constellationRouter.get("/show/:constellationHealth_id", checkPermissions("constellation_view"), [param("constellationHealth_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         var constellationHealth_id = Number(req.params.constellationHealth_id); 
         db = await helper.getOracleClient(db, DB_CONFIG_CONSTELLATION);
@@ -340,7 +341,7 @@ constellationRouter.get("/show/:constellationHealth_id", checkPermissions("const
         
         res.json({ status: 200, dataStatus: constellationStatus, dataConstellation: constellationHealth, dataConstellationFamily: constellationFamily, fileName:fileName});
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
 
         res.send( {
             status: 400,
@@ -481,22 +482,21 @@ constellationRouter.post("/store", async (req: Request, res: Response) => {
             db = await helper.getOracleClient(db, DB_CONFIG_CONSTELLATION);
 
             for (const familyMember of familyMembers) {
-                await db(`${SCHEMA_CONSTELLATION}.CONSTELLATION_HEALTH_FAMILY_MEMBERS`).insert(familyMember).into(`${SCHEMA_CONSTELLATION}.CONSTELLATION_HEALTH_FAMILY_MEMBERS`)
-                .then(() => {
+                try {
+                    await db(`${SCHEMA_CONSTELLATION}.CONSTELLATION_HEALTH_FAMILY_MEMBERS`).insert(familyMember).into(`${SCHEMA_CONSTELLATION}.CONSTELLATION_HEALTH_FAMILY_MEMBERS`);
                     familyMembersSaved = true;
-                })
-                .catch((e) => {
+                } catch (e) {
                     familyMembersSaved = false;
-                    console.log(e);
-                    res.send( {
-                        status: 400,
-                        message: 'Request could not be processed'
-                    });
-                });
+                    logger.error("Unhandled error in request handler", e);
+                    break; // stop on first failure; a single response is sent below
+                }
             }
 
+            // Exactly one response per request (see audit HIGH-05).
             if(constellationSaved && familyMembersSaved){
                 res.json({ status:200, message: 'Request saved' });
+            } else {
+                res.send({ status: 400, message: 'Request could not be processed' });
             }
 
         }else if(constellationSaved){
@@ -504,10 +504,10 @@ constellationRouter.post("/store", async (req: Request, res: Response) => {
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 404,
-            message: 'Request could not be processed ' + e
+            message: 'Request could not be processed'
         });
     }
 
@@ -519,7 +519,7 @@ constellationRouter.post("/store", async (req: Request, res: Response) => {
  * @param {status} status of request
  * @return json
  */
-constellationRouter.post("/export/", async (req: Request, res: Response) => {
+constellationRouter.post("/export/", checkPermissions("constellation_view"), async (req: Request, res: Response) => {
     try {
         var requests = req.body.params.requests; 
         db = await helper.getOracleClient(db, DB_CONFIG_CONSTELLATION);
@@ -727,7 +727,7 @@ constellationRouter.post("/export/", async (req: Request, res: Response) => {
  * @return json
  */
 
-constellationRouter.patch("/changeStatus", async (req: Request, res: Response) => {
+constellationRouter.patch("/changeStatus", checkPermissions("constellation_update"), [body("params.requests").isArray({ min: 1 }), body("params.requestStatus").notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         var constellation_id = req.body.params.requests; 
         db = await helper.getOracleClient(db, DB_CONFIG_CONSTELLATION);
@@ -763,10 +763,14 @@ constellationRouter.patch("/changeStatus", async (req: Request, res: Response) =
             }
 
             res.json({ status:200, message: message, type: type });
+        } else {
+            // No rows matched — report this rather than silently succeeding or
+            // sending no response at all (see audit LOW-09).
+            res.json({ status:400, message: 'No matching submissions were updated.', type: "error" });
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -774,7 +778,7 @@ constellationRouter.patch("/changeStatus", async (req: Request, res: Response) =
     }
 });
 
-constellationRouter.post("/duplicates", async (req: Request, res: Response) => {
+constellationRouter.post("/duplicates", checkPermissions("constellation_view"), async (req: Request, res: Response) => {
     try {
         db = await helper.getOracleClient(db, DB_CONFIG_CONSTELLATION);
         var constellationOriginal = Object();
@@ -846,7 +850,7 @@ constellationRouter.post("/duplicates", async (req: Request, res: Response) => {
         res.send({data: constellation});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -862,7 +866,7 @@ constellationRouter.post("/duplicates", async (req: Request, res: Response) => {
  * @param id of request
  * @return json
  */
-constellationRouter.get("/duplicates/details/:duplicate_id",[param("duplicate_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+constellationRouter.get("/duplicates/details/:duplicate_id", checkPermissions("constellation_view"), [param("duplicate_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         db = await helper.getOracleClient(db, DB_CONFIG_CONSTELLATION);
         let duplicate_id = Number(req.params.duplicate_id);
@@ -1021,7 +1025,7 @@ constellationRouter.get("/duplicates/details/:duplicate_id",[param("duplicate_id
                 });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -1035,7 +1039,7 @@ constellationRouter.get("/duplicates/details/:duplicate_id",[param("duplicate_id
  * @param {duplicate_id} id of warning
  * @return json
  */
-constellationRouter.get("/duplicates/validateWarning/:duplicate_id",[param("duplicate_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+constellationRouter.get("/duplicates/validateWarning/:duplicate_id", checkPermissions("constellation_view"), [param("duplicate_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         var duplicate_id = Number(req.params.duplicate_id); 
         db = await helper.getOracleClient(db, DB_CONFIG_CONSTELLATION);
@@ -1059,7 +1063,7 @@ constellationRouter.get("/duplicates/validateWarning/:duplicate_id",[param("dupl
         res.json({ status: 200, flagWarning: flagExists, message: message, type: type});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -1074,7 +1078,7 @@ constellationRouter.get("/duplicates/validateWarning/:duplicate_id",[param("dupl
  * @param {request}
  * @return json
  */
-constellationRouter.patch("/duplicates/primary", async (req: Request, res: Response) => {
+constellationRouter.patch("/duplicates/primary", checkPermissions("constellation_update"), async (req: Request, res: Response) => {
     try {
         db = await helper.getOracleClient(db, DB_CONFIG_CONSTELLATION);
         var warning = Number(req.body.params.warning);
@@ -1154,7 +1158,7 @@ constellationRouter.patch("/duplicates/primary", async (req: Request, res: Respo
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -1318,13 +1322,16 @@ async function getMultipleIdsByModel(model: string, names: any) {
                 count++;
             });
         }
+        // Assemble via JSON.stringify so an "other" value containing a double
+        // quote can't corrupt the stored JSON (see audit LOW-07).
+        const ids = modelValues === "" ? [] : modelValues.split(",").map(Number);
         if(others !== "") {
-            return "["+modelValues+',"'+others+'"]';
+            return JSON.stringify([...ids, others]);
         }else{
-            return "["+modelValues+"]";
+            return JSON.stringify(ids);
         }
     }else if(!data.length && others.length > 0){
-        return '["'+others+'"]';
+        return JSON.stringify([others]);
     }else{
         return null;
     }
