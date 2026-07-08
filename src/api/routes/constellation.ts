@@ -732,7 +732,7 @@ constellationRouter.patch("/changeStatus", checkPermissions("constellation_updat
         var constellation_id = req.body.params.requests; 
         db = await helper.getOracleClient(db, DB_CONFIG_CONSTELLATION);
         var status_id = req.body.params.requestStatus;
-        var updateStatus = await db(`${SCHEMA_CONSTELLATION}.CONSTELLATION_HEALTH`).update({status: status_id}).whereIn("ID", constellation_id);
+        var updateStatus = await db(`${SCHEMA_CONSTELLATION}.CONSTELLATION_HEALTH`).update({STATUS: status_id}).whereIn("ID", constellation_id);
         var statusData = await db(`${SCHEMA_CONSTELLATION}.CONSTELLATION_STATUS`).where('ID', status_id).first();
         var logFields = Array();
 
@@ -1102,10 +1102,10 @@ constellationRouter.patch("/duplicates/primary", checkPermissions("constellation
                 return data[0];
             });
             if(type == 'O'){
-                updateRequest = await db(`${SCHEMA_CONSTELLATION}.CONSTELLATION_HEALTH`).update({status: "4"}).where("ID", warningRequest.duplicated_id);
+                updateRequest = await db(`${SCHEMA_CONSTELLATION}.CONSTELLATION_HEALTH`).update({STATUS: "4"}).where("ID", warningRequest.duplicated_id);
                 primarySubmission = warningRequest.duplicated_id;
             }else if(type == 'D'){
-                updateRequest = await db(`${SCHEMA_CONSTELLATION}.CONSTELLATION_HEALTH`).update({status: "4"}).where("ID", warningRequest.original_id);
+                updateRequest = await db(`${SCHEMA_CONSTELLATION}.CONSTELLATION_HEALTH`).update({STATUS: "4"}).where("ID", warningRequest.original_id);
                 primarySubmission = warningRequest.original_id;
             }
 

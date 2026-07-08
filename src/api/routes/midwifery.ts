@@ -794,7 +794,7 @@ midwiferyRouter.post("/export", checkPermissions("midwifery_view"), async (req: 
  * @param {midwifery_id} id of request
  * @return json
  */
-midwiferyRouter.patch("/changeStatus", checkPermissions("midwifery_update"), [body("params.requests").isArray({ min: 1 })], ReturnValidationErrors, async (req: Request, res: Response) => {
+midwiferyRouter.patch("/changeStatus", checkPermissions("midwifery_update"), [body("params.requests").isArray({ min: 1 }), body("params.requestStatus").notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         var midwifery_id = req.body.params.requests;
         var status_id = req.body.params.requestStatus;
