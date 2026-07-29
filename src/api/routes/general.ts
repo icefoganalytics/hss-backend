@@ -1,11 +1,13 @@
 import { AuditRepository } from './../repository/oracle/AuditRepository';
 import { groupBy } from '../utils/groupBy';
-import { helper } from "../utils";
+import { helper, logger } from "../utils";
 import express, { Request, Response } from "express";
 import { param } from "express-validator";
 import { SubmissionStatusRepository } from "../repository/oracle/SubmissionStatusRepository";
 import knex from "knex";
 import { DB_CONFIG_DENTAL, SCHEMA_DENTAL, SCHEMA_GENERAL, DB_CONFIG_GENERAL } from "../config";
+import { checkPermissions } from "../middleware/permissions";
+import { ReturnValidationErrors } from "../middleware";
 var _ = require('lodash');
 let db = knex(DB_CONFIG_GENERAL);
 var RateLimit = require('express-rate-limit');
@@ -24,10 +26,10 @@ generalRouter.use(RateLimit({
  * @param { action_value } action value.
  * @return json
  */
-generalRouter.get("/submissions/status/:action_id/:action_value", [
+generalRouter.get("/submissions/status/:action_id/:action_value", checkPermissions("dashboard_view"), [
     param("action_id").notEmpty(), 
     param("action_value").notEmpty()
-], async (req: Request, res: Response) => {
+], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
 
@@ -38,7 +40,7 @@ generalRouter.get("/submissions/status/:action_id/:action_value", [
         res.send({data: result});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -53,10 +55,10 @@ generalRouter.get("/submissions/status/:action_id/:action_value", [
  * @param { action_value } action value.
  * @return json
  */
-generalRouter.get("/submissions/:action_id/:action_value", [
+generalRouter.get("/submissions/:action_id/:action_value", checkPermissions("dashboard_view"), [
     param("action_id").notEmpty(), 
     param("action_value").notEmpty()
-], async (req: Request, res: Response) => {
+], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
 
@@ -73,7 +75,7 @@ generalRouter.get("/submissions/:action_id/:action_value", [
             });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -87,9 +89,9 @@ generalRouter.get("/submissions/:action_id/:action_value", [
  * @param { event_type } event type.
  * @return json
  */
-generalRouter.get("/audit/data/:event_type", [
+generalRouter.get("/audit/data/:event_type", checkPermissions("dashboard_view"), [
     param("event_type").notEmpty()
-], async (req: Request, res: Response) => {
+], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
 
@@ -98,7 +100,7 @@ generalRouter.get("/audit/data/:event_type", [
         res.send({ data: result });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -111,7 +113,7 @@ generalRouter.get("/audit/data/:event_type", [
  *
  * @return json
  */
-generalRouter.get("/audit/timeline", async (req: Request, res: Response) => {
+generalRouter.get("/audit/timeline", checkPermissions("dashboard_view"), async (req: Request, res: Response) => {
 
     try {
         const permissions = req.user?.db_user.permissions ?? [];
@@ -119,7 +121,7 @@ generalRouter.get("/audit/timeline", async (req: Request, res: Response) => {
         res.send({ data: result });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -134,10 +136,10 @@ generalRouter.get("/audit/timeline", async (req: Request, res: Response) => {
  * @param { action_value } action value.
  * @return json
  */
-generalRouter.get("/submissions/age/:action_id/:action_value", [
+generalRouter.get("/submissions/age/:action_id/:action_value", checkPermissions("dashboard_view"), [
     param("action_id").notEmpty(),
     param("action_value").notEmpty()
-], async (req: Request, res: Response) => {
+], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
 
@@ -153,7 +155,7 @@ generalRouter.get("/submissions/age/:action_id/:action_value", [
             });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -169,10 +171,10 @@ generalRouter.get("/submissions/age/:action_id/:action_value", [
  * @param { action_value } action value.
  * @return json
  */
-generalRouter.get("/submissions/gender/:action_id/:action_value", [
+generalRouter.get("/submissions/gender/:action_id/:action_value", checkPermissions("dashboard_view"), [
     param("action_id").notEmpty(),
     param("action_value").notEmpty()
-], async (req: Request, res: Response) => {
+], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
 
@@ -189,7 +191,7 @@ generalRouter.get("/submissions/gender/:action_id/:action_value", [
             });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -202,7 +204,7 @@ generalRouter.get("/submissions/gender/:action_id/:action_value", [
  *
  * @return json
  */
-generalRouter.post("/logs", async (req: Request, res: Response) => {
+generalRouter.post("/logs", checkPermissions("dental_logs"), async (req: Request, res: Response) => {
     try {
         let moduleName = req.body.params.moduleName;
         let userId = req.body.params.userName;
@@ -283,7 +285,7 @@ generalRouter.post("/logs", async (req: Request, res: Response) => {
         res.send({data: moduleLogs, users: queryUsers});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Dashboard logs could not be processed'
@@ -297,7 +299,7 @@ generalRouter.post("/logs", async (req: Request, res: Response) => {
  * @param {status} status of request
  * @return json
  */
-generalRouter.post("/export/", async (req: Request, res: Response) => {
+generalRouter.post("/export/", checkPermissions("dental_logs"), async (req: Request, res: Response) => {
     try {
         var requests = req.body.params.requests;
         let moduleName = req.body.params.moduleName;
@@ -385,27 +387,10 @@ generalRouter.post("/export/", async (req: Request, res: Response) => {
 
         const moduleLogs = await query;
 
-        var bufferQuery = Object();
-        let stringQuery = query.toString();
-
-        // Verify the length of the serialized JSON
-        const maxLengthInBytes = 1 * (1024 * 1024); // 1MB to  bytes
-
-        if (Buffer.byteLength(stringQuery, 'utf8') > maxLengthInBytes) {
-            console.log('The object exceeds 1MB. It will be truncated.');
-            stringQuery = stringQuery.substring(0, maxLengthInBytes);
-        }
-
-        if(!_.isEmpty(query)) {
-            bufferQuery = Buffer.from(stringQuery);
-        }else{
-            bufferQuery = null;
-        }
-
         res.json({ status: 200, dataLogs: moduleLogs});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'

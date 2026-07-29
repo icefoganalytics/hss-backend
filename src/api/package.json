@@ -8,7 +8,7 @@
     "start:dev": "ts-node-dev index.ts",
     "build:api": "tsc",
     "dev": "nodemon ./index.ts",
-    "start": "node dist/index.ts"
+    "start": "node dist/index.js"
   },
   "author": "Michael Johnson",
   "license": "ISC",
@@ -31,7 +31,7 @@
     "knex": "3.1.0",
     "lodash": "^4.17.21",
     "mysql": "^2.18.1",
-    "oracledb": "^5.5.0",
+    "oracledb": "^6.10.0",
     "redis": "^4.6.12",
     "sanitize-filename": "1.6.3",
     "sqlite3": "^5.1.2",

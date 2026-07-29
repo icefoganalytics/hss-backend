@@ -344,6 +344,17 @@ FROM
     DENTAL_STATUS
 ;
 --------------------------------------------------------
+-- GENERAL.AUDIT_TIMELINE_V calls GENERAL-owned functions (GETVALUEFORRULESTATUS/
+-- RULENAME) that read each module's STATUS_V and *_REV via dynamic SQL. Those run
+-- with the function owner's (GENERAL) privileges, so GENERAL needs SELECT on them
+-- or the audit timeline fails with ORA-00942.
+--------------------------------------------------------
+  GRANT SELECT ON "CONSTELLATION_HEALTH"."STATUS_V" TO "GENERAL";
+  GRANT SELECT ON "HIPMA"."STATUS_V" TO "GENERAL";
+  GRANT SELECT ON "MIDWIFERY"."STATUS_V" TO "GENERAL";
+  GRANT SELECT ON "DENTAL"."STATUS_V" TO "GENERAL";
+  GRANT SELECT ON "DENTAL"."DENTAL_SERVICE_REV" TO "GENERAL";
+--------------------------------------------------------
 --  DDL for View DENTAL_SERVICE_SUBMISSIONS
 --------------------------------------------------------
   CREATE OR REPLACE FORCE EDITIONABLE VIEW "DENTAL"."DENTAL_SERVICE_SUBMISSIONS" (
@@ -387,6 +398,7 @@ WHERE
     DENTAL_STATUS.DESCRIPTION,TO_CHAR(DENTAL_SERVICE.CREATED_AT, 'YYYY-MM-DD HH24:MI:SS'),
     DENTAL_SERVICE.ARE_YOU_ELIGIBLE_FOR_THE_PHARMACARE_AND_EXTENDED_HEALTH_CARE_BEN,
     CASE WHEN DENTAL_SERVICE_COMMENTS.DENTAL_SERVICE_ID IS NULL THEN 'No' ELSE 'Yes' END
+;
 
 --------------------------------------------------------
 --  DDL for View DENTAL_SERVICE_SUBMISSIONS_DETAILS
@@ -436,6 +448,7 @@ CREATE OR REPLACE FORCE EDITIONABLE VIEW "DENTAL"."DENTAL_SERVICE_SUBMISSIONS_DE
 FROM
     DENTAL.DENTAL_SERVICE
     LEFT JOIN DENTAL.DENTAL_SERVICE_FILES ON DENTAL_SERVICE.ID = DENTAL_SERVICE_FILES.DENTAL_SERVICE_ID
+;
 --------------------------------------------------------
 --  DDL for View SUBMISSIONS_DENTAL_AGE_WEEK_V
 --------------------------------------------------------
@@ -493,7 +506,7 @@ SELECT
 FROM
     DENTAL.DENTAL_SERVICE ds
     LEFT JOIN all_tables tab ON tab.table_name = 'DENTAL_SERVICE'
-		LEFT JOIN DENTAL.DENTAL_SERVICE_GENDER dsg ON ds.GENDER = dsg.NAME
+		LEFT JOIN DENTAL.DENTAL_SERVICE_GENDERS dsg ON ds.GENDER = dsg.NAME
     LEFT JOIN GENERAL.config cd ON cd.type = 'SCHEMA_TITLE' AND cd.name = tab.owner
     JOIN GENERAL.config cc ON cc.val_str3 = 'DENTAL_CHART_COLOR' AND cc.val_int2 = dsg.ID AND cc.name = tab.owner
     LEFT JOIN GENERAL.config cp ON cp.type = 'SCHEMA_PERMISSION_VIEW' AND cp.name = tab.owner
@@ -519,7 +532,7 @@ SELECT tab.owner AS id,
 		cc.val_int2
   FROM DENTAL.DENTAL_SERVICE ds
     LEFT JOIN all_tables tab ON tab.table_name = 'DENTAL_SERVICE'
-    LEFT JOIN DENTAL.DENTAL_SERVICE_GENDER dsg ON ds.GENDER = dsg.NAME
+    LEFT JOIN DENTAL.DENTAL_SERVICE_GENDERS dsg ON ds.GENDER = dsg.NAME
     LEFT JOIN GENERAL.config cd ON cd.type = 'SCHEMA_TITLE' AND cd.name = tab.owner
     JOIN GENERAL.config cc ON cc.val_str3 = 'DENTAL_CHART_COLOR' AND cc.val_int2 = dsg.ID AND cc.name = tab.owner
     LEFT JOIN GENERAL.config cp ON cp.type = 'SCHEMA_PERMISSION_VIEW' AND cp.name = tab.owner
@@ -771,7 +784,10 @@ SELECT tab.owner AS id,
 --  DDL for Index MIDWIFERY_SERVICES_REV_PK
 --------------------------------------------------------
 
-  CREATE UNIQUE INDEX "MIDWIFERY"."MIDWIFERY_SERVICES_REV_PK" ON "MIDWIFERY"."MIDWIFERY_SERVICES_REV" ("ID") 
+  -- Revision-history PK is per revision, so it must be on REV_ID (like every other
+  -- module's *_REV_PK). On "ID" it allowed only one revision per submission, so a
+  -- second update collided (ORA-00001 MIDWIFERY_SERVICES_REV_PK).
+  CREATE UNIQUE INDEX "MIDWIFERY"."MIDWIFERY_SERVICES_REV_PK" ON "MIDWIFERY"."MIDWIFERY_SERVICES_REV" ("REV_ID")
   ;
 --------------------------------------------------------
 --  DDL for Index MIDWIFERY_SERVICES_REV_STATUS
@@ -1543,7 +1559,7 @@ ALTER TRIGGER "DENTAL"."DENTAL_SERVICE_LOG_COMMENTS" DISABLE;
 --------------------------------------------------------
 --  DDL for Function GETAGERANGE
 --------------------------------------------------------
-CREATE OR REPLACE FUNCTION "GETAGERANGE"(p_date_of_birth IN DATE)
+CREATE OR REPLACE FUNCTION "GENERAL"."GETAGERANGE"(p_date_of_birth IN DATE)
   RETURN VARCHAR2
 AS
   v_age NUMBER;
@@ -1560,6 +1576,7 @@ BEGIN
     RETURN '>51';
   END IF;
 END;
+/
 
 --------------------------------------------------------
 --  DDL for Function GETTRANSFORMVALUE
@@ -1673,7 +1690,7 @@ END GETVALUEFORRULESTATUS;
 /
 
 
-CREATE OR REPLACE FUNCTION process_blob_value_format(
+CREATE OR REPLACE FUNCTION "GENERAL".process_blob_value_format(
     p_blob_value   BLOB,
     p_table_name   VARCHAR2
 ) RETURN VARCHAR2 IS
@@ -1759,9 +1776,10 @@ BEGIN
 
     RETURN TRIM(v_result_text);
 END process_blob_value_format;
+/
 
 
-CREATE OR REPLACE FUNCTION base64encode(p_blob IN BLOB)
+CREATE OR REPLACE FUNCTION "GENERAL".base64encode(p_blob IN BLOB)
   RETURN CLOB
 -- -----------------------------------------------------------------------------------
 -- Encodes a BLOB into a Base64 CLOB.
@@ -1832,11 +1850,18 @@ EXCEPTION
         RETURN NULL;
 END process_blob_value;
 /
+-- process_blob_value is called by views owned by the module schemas
+-- (e.g. DENTAL.DENTAL_SERVICE_SUBMISSIONS_DETAILS), which compile with the
+-- view owner's privileges, so each module needs EXECUTE on it.
+GRANT EXECUTE ON "GENERAL".process_blob_value TO "DENTAL";
+GRANT EXECUTE ON "GENERAL".process_blob_value TO "MIDWIFERY";
+GRANT EXECUTE ON "GENERAL".process_blob_value TO "HIPMA";
+GRANT EXECUTE ON "GENERAL".process_blob_value TO "CONSTELLATION_HEALTH";
 
 --------------------------------------------------------
 --  DDL for View SUBMISSIONS_LOGS
 --------------------------------------------------------
-CREATE OR REPLACE VIEW GENERAL.SUBMISSIONS_LOGS AS
+CREATE OR REPLACE FORCE VIEW GENERAL.SUBMISSIONS_LOGS AS
 SELECT
     al.ID,
     al.ACTION_TYPE,
@@ -1859,3 +1884,4 @@ LEFT JOIN GENERAL.USER_DATA ud
        ON al.USER_ID = ud.ID
 LEFT JOIN DENTAL.DENTAL_SERVICE ds
        ON al.SUBMISSION_ID = ds.ID
+;

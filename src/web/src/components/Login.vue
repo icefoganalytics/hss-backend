@@ -2,18 +2,18 @@
   <div class="hello">
     <h1>{{ title }}</h1>
     <p>
-      The authentication for this application is managed by our authentication
-      partner Vivvo. When you click the button below, you will be redirected to
-      their site and once authenticated, back here.
+      The authentication for this application is managed by our identity
+      provider. When you click the button below, you will be redirected to
+      sign in and then returned here.
     </p>
     <p>
-      If you have already authenticated with Vivvo and your session is still
-      active, it may skip the sign in process and return you here immediately.
+      If you already have an active session, you may be returned here
+      immediately without re-entering your credentials.
     </p>
 
-    <a class="v-btn primary v-size--default" :href="loginLink"
-      >Click here to sign in</a
-    >
+    <button class="v-btn primary v-size--default" @click="signIn">
+      Click here to sign in
+    </button>
   </div>
 </template>
 
@@ -25,17 +25,18 @@ import store from "../store";
 export default {
   name: "Login",
   data: () => ({
-    loginLink: `${config.apiBaseUrl}/api/auth/login`,
     title: `Sign in to ${config.applicationName}`
   }),
   async created() {
     await store.dispatch("checkAuthentication");
-    var isAuthenticated = store.getters.isAuthenticated;
-
-    if (isAuthenticated) {
+    if (store.getters.isAuthenticated) {
       router.push("/");
     }
-
+  },
+  methods: {
+    async signIn() {
+      await store.dispatch("login");
+    }
   }
 };
 </script>

@@ -1,32 +1,32 @@
-FROM oraclelinux:7-slim
+# Development image: Node 20 LTS on Debian Bookworm.
+# Replaces the EOL Oracle Linux 7 base + Node 13 (see audit MED-02).
+# NOTE: this build must be validated in CI.
+FROM node:20-bookworm-slim
 
 ENV TZ="America/Whitehorse"
+ENV ORACLE_DIR=/opt/oracle
 
-RUN yum upgrade -y && yum install yum-utils
-RUN  yum -y install oracle-release-el7 && \
-     yum-config-manager --enable ol7_oracle_instantclient && \
-     yum -y install oracle-instantclient19.3-basiclite && \
-     rm -rf /var/cache/yum
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libaio1 wget unzip ca-certificates iputils-ping \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN yum-config-manager --enable *addons
-RUN yum install -y gcc-c++ make libaio
-
-RUN curl -sL https://rpm.nodesource.com/setup_13.x | bash -
-RUN yum install -y nodejs
-RUN npm install -g pm2@latest
-RUN npm install -g html-pdf
-
-RUN yum -y install iputils
-
-RUN export LD_LIBRARY_PATH=/usr/lib/oracle/19.3/client64/lib
-
+# Oracle Instant Client (basiclite) for the oracledb driver.
+RUN mkdir -p ${ORACLE_DIR} \
+    && cd ${ORACLE_DIR} \
+    && wget -q https://download.oracle.com/otn_software/linux/instantclient/instantclient-basiclite-linuxx64.zip \
+    && unzip -q instantclient-basiclite-linuxx64.zip \
+    && rm -f instantclient-basiclite-linuxx64.zip \
+    && echo /opt/oracle/instantclient* > /etc/ld.so.conf.d/oracle-instantclient.conf \
+    && ldconfig
 
 WORKDIR /usr/src/app
 COPY package.json /usr/src/app/package.json
 RUN npm install
 
-RUN npm install -g nodemon
 COPY ./ ./
-EXPOSE 3000 6379
 
-CMD ["npm run start"]
+# Run as the unprivileged 'node' user that ships with the base image.
+USER node
+EXPOSE 3000
+
+CMD ["npm", "run", "start:dev"]

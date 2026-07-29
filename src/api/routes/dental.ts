@@ -3,8 +3,9 @@ import { body, param } from "express-validator";
 import { SubmissionStatusRepository } from "../repository/oracle/SubmissionStatusRepository";
 import knex from "knex";
 import { DB_CONFIG_DENTAL, SCHEMA_DENTAL, SCHEMA_GENERAL } from "../config";
-import { groupBy, helper } from "../utils";
+import { groupBy, helper, logger } from "../utils";
 import { checkPermissions } from "../middleware/permissions";
+import { ReturnValidationErrors } from "../middleware";
 import { Console } from "console";
 var RateLimit = require('express-rate-limit');
 var _ = require('lodash');
@@ -26,10 +27,10 @@ dentalRouter.use(RateLimit({
  * @param { action_value } action value.
  * @return json
  */
-dentalRouter.get("/submissions/:action_id/:action_value", [
+dentalRouter.get("/submissions/:action_id/:action_value", checkPermissions("dental_view"), [
     param("action_id").notEmpty(), 
     param("action_value").notEmpty()
-], async (req: Request, res: Response) => {
+], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
 
@@ -48,7 +49,7 @@ dentalRouter.get("/submissions/:action_id/:action_value", [
             });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -63,10 +64,10 @@ dentalRouter.get("/submissions/:action_id/:action_value", [
  * @param { action_value } action value.
  * @return json
  */
-dentalRouter.get("/submissions/status/:action_id/:action_value", [
+dentalRouter.get("/submissions/status/:action_id/:action_value", checkPermissions("dental_view"), [
     param("action_id").notEmpty(),
     param("action_value").notEmpty()
-], async (req: Request, res: Response) => {
+], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
 
@@ -78,7 +79,7 @@ dentalRouter.get("/submissions/status/:action_id/:action_value", [
         res.send({data: result});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -91,14 +92,20 @@ dentalRouter.get("/submissions/status/:action_id/:action_value", [
  *
  * @return json
  */
-dentalRouter.post("/", async (req: Request, res: Response) => {
+dentalRouter.post("/", checkPermissions("dental_view"), async (req: Request, res: Response) => {
     try {
 
         const page = parseInt(req.body.params.page as string) || 1;
         const pageSize = parseInt(req.body.params.pageSize as string) || 10;
         const offset = (page - 1) * pageSize;
+        // Allow-list sortable columns and direction so request input can't probe
+        // arbitrary columns / inject identifiers (see audit MED-05).
+        const allowedSortOrders = ["ASC", "DESC"];
+        const allowedSortFields = ["ID", "FIRST_NAME", "MIDDLE_NAME", "LAST_NAME", "HEALTH_CARD_NUMBER", "POSTAL_CODE", "EMAIL", "DATE_OF_BIRTH", "CREATED_AT", "STATUS"];
         const sortBy = req.body.params.sortBy;
         const sortOrder = req.body.params.sortOrder;
+        const safeSortBy = allowedSortFields.includes(sortBy?.toUpperCase()) ? sortBy.toUpperCase() : "CREATED_AT";
+        const safeSortOrder = allowedSortOrders.includes(sortOrder?.toUpperCase()) ? sortOrder.toUpperCase() : "DESC";
         const initialFetch = req.body.params.initialFetch;
 
         var dateFrom = req.body.params.dateFrom;
@@ -153,7 +160,7 @@ dentalRouter.post("/", async (req: Request, res: Response) => {
         const countQuery = query.clone();
 
         if (sortBy) {
-            query = query.orderBy(sortBy.toUpperCase(), sortOrder);
+            query = query.orderBy(safeSortBy, safeSortOrder);
         } else {
             query = query.orderBy('CREATED_AT', 'DESC');
         }
@@ -176,7 +183,7 @@ dentalRouter.post("/", async (req: Request, res: Response) => {
         res.send({data: dentalService, dataStatus: dentalStatus, total: countSubmissions, all: countAll});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -191,7 +198,7 @@ dentalRouter.post("/", async (req: Request, res: Response) => {
  * @return json
  */
 
-dentalRouter.patch("/changeStatus", async (req: Request, res: Response) => {
+dentalRouter.patch("/changeStatus", checkPermissions("dental_update"), [body("params.requests").isArray({ min: 1 }), body("params.requestStatus").notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         const { requests: dentalService_id, requestStatus: status_id } = req.body.params;
         db = await helper.getOracleClient(db, DB_CONFIG_DENTAL);
@@ -226,10 +233,14 @@ dentalRouter.patch("/changeStatus", async (req: Request, res: Response) => {
             }
 
             res.json({ status:200, message: message, type: type });
+        } else {
+            // No rows matched — report this rather than silently succeeding or
+            // sending no response at all (see audit LOW-09).
+            res.json({ status:400, message: 'No matching submissions were updated.', type: "error" });
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed',
@@ -244,7 +255,7 @@ dentalRouter.patch("/changeStatus", async (req: Request, res: Response) => {
  * @param {dentalService_id} id of request
  * @return json
  */
-dentalRouter.get("/validateRecord/:dentalService_id",[param("dentalService_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+dentalRouter.get("/validateRecord/:dentalService_id", checkPermissions("dental_view"), [param("dentalService_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         const { dentalService_id } = req.params;
         var flagExists = true;
@@ -265,7 +276,7 @@ dentalRouter.get("/validateRecord/:dentalService_id",[param("dentalService_id").
 
         res.json({ status: 200, flagDental: flagExists, message: message, type: type});
     } catch(e) {
-        console.log(e);
+        logger.error("Unhandled error in request handler", e);
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -279,7 +290,7 @@ dentalRouter.get("/validateRecord/:dentalService_id",[param("dentalService_id").
  * @param {dentalService_id} id of request
  * @return json
  */
-dentalRouter.get("/show/:dentalService_id", checkPermissions("dental_view"), [param("dentalService_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+dentalRouter.get("/show/:dentalService_id", checkPermissions("dental_view"), [param("dentalService_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         var dentalService_id = Number(req.params.dentalService_id);
         var dentalService = Object();
@@ -540,7 +551,7 @@ dentalRouter.get("/show/:dentalService_id", checkPermissions("dental_view"), [pa
             archivedFlag: archivedFlag
         });
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
 
         res.send( {
             status: 400,
@@ -555,7 +566,7 @@ dentalRouter.get("/show/:dentalService_id", checkPermissions("dental_view"), [pa
  * @param {status} status of request
  * @return json
  */
-dentalRouter.post("/export/", async (req: Request, res: Response) => {
+dentalRouter.post("/export/", checkPermissions("dental_view"), async (req: Request, res: Response) => {
     try {
         const { requests, status: status_request, dateFrom, dateTo, dateYear, isAllData, offset, limit } = req.body.params;
         let searchQuery = req.body.params.searchQuery;
@@ -712,7 +723,7 @@ dentalRouter.post("/export/", async (req: Request, res: Response) => {
         }
         res.json({ status: 200, dataDental: dentalService, dataDependents: dentalServiceDependents, dataInternalFields: dentalInternalFields });
     } catch (e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send({
             status: 400,
             message: 'Request could not be processed'
@@ -727,7 +738,7 @@ dentalRouter.post("/export/", async (req: Request, res: Response) => {
  *
  * @return json
  */
-dentalRouter.post("/duplicates", async (req: Request, res: Response) => {
+dentalRouter.post("/duplicates", checkPermissions("dental_view"), async (req: Request, res: Response) => {
     try {
         var dentalOriginal = Object();
         var dentalDuplicate = Object();
@@ -827,7 +838,7 @@ dentalRouter.post("/duplicates", async (req: Request, res: Response) => {
         res.send({data: dentalService});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -842,7 +853,7 @@ dentalRouter.post("/duplicates", async (req: Request, res: Response) => {
  * @param id of request
  * @return json
  */
-dentalRouter.get("/duplicates/details/:duplicate_id",[param("duplicate_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+dentalRouter.get("/duplicates/details/:duplicate_id", checkPermissions("dental_view"), [param("duplicate_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         let duplicate_id = Number(req.params.duplicate_id);
         var dentalOriginal = Object();
@@ -974,7 +985,7 @@ dentalRouter.get("/duplicates/details/:duplicate_id",[param("duplicate_id").isIn
         });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -988,7 +999,7 @@ dentalRouter.get("/duplicates/details/:duplicate_id",[param("duplicate_id").isIn
  * @param {duplicate_id} id of warning
  * @return json
  */
-dentalRouter.get("/duplicates/validateWarning/:duplicate_id",[param("duplicate_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+dentalRouter.get("/duplicates/validateWarning/:duplicate_id", checkPermissions("dental_view"), [param("duplicate_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         var duplicate_id = Number(req.params.duplicate_id);
         var warning = Object();
@@ -1012,7 +1023,7 @@ dentalRouter.get("/duplicates/validateWarning/:duplicate_id",[param("duplicate_i
 
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -1027,7 +1038,7 @@ dentalRouter.get("/duplicates/validateWarning/:duplicate_id",[param("duplicate_i
  * @param {request}
  * @return json
  */
-dentalRouter.patch("/duplicates/primary", async (req: Request, res: Response) => {
+dentalRouter.patch("/duplicates/primary", checkPermissions("dental_update"), async (req: Request, res: Response) => {
     try {
         var warning = Number(req.body.params.warning);
         var request = Number(req.body.params.request);
@@ -1104,7 +1115,7 @@ dentalRouter.patch("/duplicates/primary", async (req: Request, res: Response) =>
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -1118,10 +1129,8 @@ dentalRouter.patch("/duplicates/primary", async (req: Request, res: Response) =>
  * @param {dentalFile_id} id of request
  * @return json
  */
-dentalRouter.get("/downloadFile/:dentalFile_id",[param("dentalFile_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+dentalRouter.get("/downloadFile/:dentalFile_id", checkPermissions("dental_view"), [param("dentalFile_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
-        var pathFile = "";
-        var fs = require("fs");
         var buffer;
         var dentalFile_id = Number(req.params.dentalFile_id);
         const userId = req.user?.db_user.user.id || null;
@@ -1130,42 +1139,49 @@ dentalRouter.get("/downloadFile/:dentalFile_id",[param("dentalFile_id").isInt().
 
         var dentalFiles = await db(`${SCHEMA_DENTAL}.DENTAL_SERVICE_FILES`).where("ID", dentalFile_id).select().first();
 
+        if(!dentalFiles){
+            return res.status(404).send({ status: 404, message: 'File not found' });
+        }
+
         if(dentalFiles.is_base64){
             buffer = Buffer.from(dentalFiles.file_data.toString(), 'base64');
         }else{
             buffer = dentalFiles.file_data;
         }
 
-        let safeName = (Math.random() + 1).toString(36).substring(7)+'_'+dentalFiles.file_name;
-        let pathPublicFront = path.join(__dirname, "../../");
-        pathFile = pathPublicFront+"dist/web/"+safeName+"."+dentalFiles.file_type;
+        var sanitize = require("sanitize-filename");
+        // Sanitize the stored name/type purely for the download filename — the
+        // bytes are streamed from the DB, never written to the served web root
+        // (see audit CRIT-05).
+        let safeBase = sanitize(String(dentalFiles.file_name || "file")) || "file";
+        let safeType = String(dentalFiles.file_type || "").replace(/[^a-zA-Z0-9]/g, "");
+        let downloadName = safeType ? `${safeBase}.${safeType}` : safeBase;
 
-        fs.writeFileSync(pathFile, buffer);
+        var logFields = {
+            ACTION_TYPE: 9,
+            TITLE: downloadName,
+            SCHEMA_NAME: SCHEMA_DENTAL,
+            TABLE_NAME: "DENTAL_SERVICE_FILES",
+            SUBMISSION_ID: dentalFiles.dental_service_id,
+            FIELD1: dentalFile_id,
+            ACTION_DATA: null,
+            USER_ID: userId
+        };
 
-        if(dentalFiles) {
+        let loggedAction = await helper.insertLog(logFields);
 
-            var logFields = {
-                ACTION_TYPE: 9,
-                TITLE: safeName+"."+dentalFiles.file_type,
-                SCHEMA_NAME: SCHEMA_DENTAL,
-                TABLE_NAME: "DENTAL_SERVICE_FILES",
-                SUBMISSION_ID: dentalFiles.dental_service_id,
-                FIELD1: dentalFile_id,
-                ACTION_DATA: null,
-                USER_ID: userId
-            };
-
-            let loggedAction = await helper.insertLog(logFields);
-
-            if(!loggedAction){
-                console.log("Dental submission detail could not be logged");
-            }
-
-            res.json({ fileName: safeName+"."+dentalFiles.file_type, fileType: dentalFiles.file_type, filePath: pathFile});
+        if(!loggedAction){
+            logger.error("Dental file download could not be logged");
         }
 
+        // Stream the attachment straight to the client.
+        res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        return res.send(buffer);
+
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -1178,7 +1194,7 @@ dentalRouter.get("/downloadFile/:dentalFile_id",[param("dentalFile_id").isInt().
  *
  * @param {file} name of file
  */
-dentalRouter.post("/deleteFile", async (req: Request, res: Response) => {
+dentalRouter.post("/deleteFile", checkPermissions("dental_delete"), async (req: Request, res: Response) => {
     try {
 
         var sanitize = require("sanitize-filename");
@@ -1192,7 +1208,7 @@ dentalRouter.post("/deleteFile", async (req: Request, res: Response) => {
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -1362,18 +1378,18 @@ dentalRouter.post("/store", async (req: Request, res: Response) => {
 
             if(!_.isEmpty(arrayDependents)){
                 for (const dependent of await arrayDependents) {
-                    await db(`${SCHEMA_DENTAL}.DENTAL_SERVICE_DEPENDENTS`).insert(dependent).into(`${SCHEMA_DENTAL}.DENTAL_SERVICE_DEPENDENTS`)
-                    .then(() => {
+                    try {
+                        await db(`${SCHEMA_DENTAL}.DENTAL_SERVICE_DEPENDENTS`).insert(dependent).into(`${SCHEMA_DENTAL}.DENTAL_SERVICE_DEPENDENTS`);
                         dependentsSaved = true;
-                    })
-                    .catch((e) => {
+                    } catch (e) {
                         dependentsSaved = false;
-                        console.log(e);
-                        res.send( {
-                            status: 400,
-                            message: 'Request could not be processed'
-                        });
-                    });
+                        logger.error("Unhandled error in request handler", e);
+                        // Single guarded response (see audit HIGH-05).
+                        if (!responseSent) {
+                            res.json({ status: 400, message: 'Request could not be processed' });
+                            responseSent = true;
+                        }
+                    }
                 }
             }
         }
@@ -1428,10 +1444,10 @@ dentalRouter.post("/store", async (req: Request, res: Response) => {
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 404,
-            message: 'Request could not be processed ' + e
+            message: 'Request could not be processed'
         });
     }
 
@@ -1442,7 +1458,7 @@ dentalRouter.post("/store", async (req: Request, res: Response) => {
  *
  * @param {data}
  */
-dentalRouter.post("/storeInternalFields", async (req: Request, res: Response) => {
+dentalRouter.post("/storeInternalFields", checkPermissions("dental_update"), [body("params.idSubmission").isInt()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         let data = req.body.params;
         let internalFieldsSaved = Object();
@@ -1516,7 +1532,7 @@ dentalRouter.post("/storeInternalFields", async (req: Request, res: Response) =>
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed',
@@ -1530,15 +1546,20 @@ dentalRouter.post("/storeInternalFields", async (req: Request, res: Response) =>
  *
  * @param {data}
  */
-dentalRouter.post("/storeComments", async (req: Request, res: Response) => {
+dentalRouter.post("/storeComments", checkPermissions("dental_update"), [body("params.id").isInt(), body("params.comment").trim().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
 
         let data = req.body.params;
         const comments = Object();
         let commentsSaved = Object();
 
+        // Derive the acting user from the authenticated session, never from the
+        // request body, so comments and the audit log cannot be attributed to
+        // another user (see audit CRIT-04).
+        const userId = req.user?.db_user.user.id || null;
+
         comments.DENTAL_SERVICE_ID = data.id;
-        comments.USER_ID = data.user;
+        comments.USER_ID = userId;
         comments.COMMENT_DESCRIPTION = data.comment;
         db = await helper.getOracleClient(db, DB_CONFIG_DENTAL);
 
@@ -1550,7 +1571,7 @@ dentalRouter.post("/storeComments", async (req: Request, res: Response) => {
             SCHEMA_NAME: SCHEMA_DENTAL,
             TABLE_NAME: "DENTAL_SERVICE_COMMENTS",
             SUBMISSION_ID: data.id,
-            USER_ID: data.user
+            USER_ID: userId
         };
 
         let loggedAction = await helper.insertLog(logFields);
@@ -1565,7 +1586,7 @@ dentalRouter.post("/storeComments", async (req: Request, res: Response) => {
 
         res.json({ status:200, message: 'Comment saved', type: "success" });
     } catch(e) {
-        console.log(e);  // debug if needed 
+        logger.error("Unhandled error in request handler", e);  // debug if needed 
         res.send( {
             status: 400,
             message: 'Request could not be processed',
@@ -1582,7 +1603,7 @@ dentalRouter.post("/storeComments", async (req: Request, res: Response) => {
  * @return json
  */
 
-dentalRouter.patch("/update", async (req: Request, res: Response) => {
+dentalRouter.patch("/update", checkPermissions("dental_update"), [body("params.idSubmission").isInt()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
 
         var idSubmission = req.body.params.idSubmission;
@@ -1912,7 +1933,21 @@ dentalRouter.patch("/update", async (req: Request, res: Response) => {
         data.HAVE_CHILDREN = have_children.text;
         data.ASK_DEMOGRAPHIC = data.ASK_DEMOGRAPHIC.text;
 
-        var updateSubmission = await db(`${SCHEMA_DENTAL}.DENTAL_SERVICE`).update(data).where("ID", idSubmission);
+        // Allow-list writable columns so the client cannot overwrite ID/STATUS/
+        // CREATED_AT etc. via mass-assignment (see audit CRIT-04). `data` is keyed
+        // by UPPER_CASE column name; anything not listed here is dropped.
+        const ALLOWED_UPDATE_COLUMNS = [
+            "FIRST_NAME", "MIDDLE_NAME", "LAST_NAME", "DATE_OF_BIRTH", "HEALTH_CARD_NUMBER",
+            "MAILING_ADDRESS", "CITY_OR_TOWN", "POSTAL_CODE", "PHONE", "EMAIL", "EMAIL_INSTEAD",
+            "HAVE_CHILDREN", "ASK_DEMOGRAPHIC", "OTHER_COVERAGE",
+            "ARE_YOU_ELIGIBLE_FOR_THE_PHARMACARE_AND_EXTENDED_HEALTH_CARE_BEN",
+            "IDENTIFY_GROUPS", "GENDER", "EDUCATION", "OFTEN_BRUSH", "STATE_TEETH", "OFTEN_FLOSS",
+            "STATE_GUMS", "LAST_SAW_DENTIST", "REASON_FOR_DENTIST", "BUY_SUPPLIES", "PAY_FOR_VISIT",
+            "BARRIERS", "CHECK_ALL_COVERAGE", "PROBLEMS", "SERVICES_NEEDED"
+        ];
+        const updateData = _.pick(data, ALLOWED_UPDATE_COLUMNS);
+
+        var updateSubmission = await db(`${SCHEMA_DENTAL}.DENTAL_SERVICE`).update(updateData).where("ID", idSubmission);
 
         if(updateSubmission) {
             let type = "success";
@@ -1954,7 +1989,7 @@ dentalRouter.patch("/update", async (req: Request, res: Response) => {
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed',
@@ -2062,42 +2097,38 @@ async function getCatalogSelect(table: any): Promise<any[]>{
  * @return {fileData} array with file data
  */
 function saveFile(field_name: any, data: any){
-    var path = "";
-    var fs = require("fs");
+    var sanitize = require("sanitize-filename");
     const allowedExtensions = ["pdf", "doc", "docx", "jpg", "jpeg", "png"]
 
     if(data[field_name] !== 'undefined' && (data[field_name]) && data[field_name]['data'] !== 'undefined'){
 
         var fileData = Object();
         var buffer = Buffer.from(data[field_name]['data'], 'base64');
-        let mime = data[field_name]['mime'];
         let name = data[field_name]['name'];
-        let extension = mime.split("/");
-        let fileName = name.split(".");
-        let safeName = (Math.random() + 1).toString(36).substring(7)+'_'+name;
-        path = __dirname+'/'+safeName;
+        // Sanitize the client filename; never derive a disk path from it.
+        let fileName = sanitize(String(name)).split(".");
 
-        fs.writeFileSync(path, buffer);
+        // Validate size from the in-memory buffer BEFORE persisting anything
+        // (the previous code wrote to disk first, with no size cap). See audit MED-06.
+        var fileSizeInMegabytes = buffer.length / (1024*1024);
 
-        // Obtain file's general information
-        var stats = fs.statSync(path);
+        if(fileSizeInMegabytes > 10){
+            return fileData;
+        }
 
-        // Convert the file size to megabytes
-        var fileSizeInMegabytes = stats.size / (1024*1024);
+        // Reject (don't store) files whose extension is not allow-listed, instead
+        // of falling back to the client-supplied extension (see audit MED-06).
+        let fileExtension = (fileName.length > 1 ? fileName[fileName.length - 1] : "").toLowerCase();
+
+        if(!allowedExtensions.includes(fileExtension)){
+            return fileData;
+        }
 
         fileData["description"] = field_name;
         fileData["file_name"] = fileName[0];
-
-        if(!allowedExtensions.includes(extension[1])){
-            fileData["file_type"] = fileName[1];
-        }else{
-            fileData["file_type"] = extension[1];
-        }
-
+        fileData["file_type"] = fileExtension;
         fileData["file_size"] = fileSizeInMegabytes;
         fileData["file_data"] = data[field_name]['data'];
-
-        fs.unlinkSync(path);
     }
 
     return fileData;

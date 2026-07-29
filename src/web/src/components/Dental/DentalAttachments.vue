@@ -113,7 +113,6 @@
 <script>
 const axios = require("axios");
 import { DENTAL_DOWNLOAD_FILE_URL } from "../../urls.js";
-import { DENTAL_DELETE_FILE } from "../../urls.js";
 
 export default {
     name: 'DentalAttachments',
@@ -145,41 +144,33 @@ export default {
 		}
 	},
 	methods: {
-		generateDownload(file){
-			axios({
-				url: '/'+file,
-				method: 'GET',
-				responseType: 'blob',
-			}).then((response) => {
-				// create file link in browser's memory
-				const href = URL.createObjectURL(response.data);
-
-				// create "a" HTML element with href to file & click
-				const link = document.createElement('a');
-				link.href = href;
-				link.setAttribute('download', file);
-				document.body.appendChild(link);
-				link.click();
-
-				// clean up "a" element & remove ObjectURL
-				document.body.removeChild(link);
-				URL.revokeObjectURL(href);
-
-				//delete generated file for download
-				axios.post(DENTAL_DELETE_FILE, {
-					params: {
-						file: file
-					}
-				});
-			});
+		saveBlob(resp){
+			// The API streams the file directly, so derive the filename from the
+			// Content-Disposition header and save the blob — nothing to clean up.
+			let fileName = 'download';
+			const disposition = resp.headers['content-disposition'];
+			if (disposition) {
+				const match = /filename="?([^"]+)"?/.exec(disposition);
+				if (match && match[1]) {
+					fileName = match[1];
+				}
+			}
+			const href = URL.createObjectURL(resp.data);
+			const link = document.createElement('a');
+			link.href = href;
+			link.setAttribute('download', fileName);
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			URL.revokeObjectURL(href);
 		},
 		downloadFile (idDownload) {
 			this.loadingDownloadId = idDownload;
 
 			axios
-			.get(DENTAL_DOWNLOAD_FILE_URL+idDownload)
+			.get(DENTAL_DOWNLOAD_FILE_URL+idDownload, { responseType: 'blob' })
 			.then((resp) => {
-				this.generateDownload(resp.data.fileName);
+				this.saveBlob(resp);
 			})
 			.catch((err) => console.error(err))
 			.finally(() => {

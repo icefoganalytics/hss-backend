@@ -4,7 +4,9 @@ import { body, param } from "express-validator";
 import { SubmissionStatusRepository } from "../repository/oracle/SubmissionStatusRepository";
 import knex from "knex";
 import { DB_CONFIG_HIPMA, SCHEMA_HIPMA, SCHEMA_GENERAL } from "../config";
-import { groupBy , helper } from "../utils";
+import { groupBy , helper, logger } from "../utils";
+import { checkPermissions } from "../middleware/permissions";
+import { ReturnValidationErrors } from "../middleware";
 var RateLimit = require('express-rate-limit');
 var _ = require('lodash');
 
@@ -24,10 +26,10 @@ hipmaRouter.use(RateLimit({
  * @param { action_value } action value.
  * @return json
  */
-hipmaRouter.get("/submissions/:action_id/:action_value", [
+hipmaRouter.get("/submissions/:action_id/:action_value", checkPermissions("hipma_view"), [
     param("action_id").notEmpty(), 
     param("action_value").notEmpty()
-], async (req: Request, res: Response) => {
+], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
 
         const actionId = req.params.action_id;
@@ -43,7 +45,7 @@ hipmaRouter.get("/submissions/:action_id/:action_value", [
             });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -58,10 +60,10 @@ hipmaRouter.get("/submissions/:action_id/:action_value", [
  * @param { action_value } action value.
  * @return json
  */
-hipmaRouter.get("/submissions/status/:action_id/:action_value", [
+hipmaRouter.get("/submissions/status/:action_id/:action_value", checkPermissions("hipma_view"), [
     param("action_id").notEmpty(), 
     param("action_value").notEmpty()
-], async (req: Request, res: Response) => {
+], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
 
@@ -73,7 +75,7 @@ hipmaRouter.get("/submissions/status/:action_id/:action_value", [
         res.send({data: result});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -87,7 +89,7 @@ hipmaRouter.get("/submissions/status/:action_id/:action_value", [
  *
  * @return json
  */
-hipmaRouter.post("/", async (req: Request, res: Response) => {
+hipmaRouter.post("/", checkPermissions("hipma_view"), async (req: Request, res: Response) => {
     try {
         var dateFrom = req.body.params.dateFrom;
         var dateTo = req.body.params.dateTo;
@@ -98,6 +100,10 @@ hipmaRouter.post("/", async (req: Request, res: Response) => {
         const offset = (page - 1) * pageSize;
         const sortBy = req.body.params.sortBy;
         const sortOrder = req.body.params.sortOrder;
+        // Allow-list direction and the default-case column (see audit MED-05).
+        const allowedSortOrders = ["ASC", "DESC"];
+        const allowedSortFields = ["ID", "CONFIRMATION_NUMBER", "FIRST_NAME", "LAST_NAME", "CREATED_AT", "STATUS"];
+        const safeSortOrder = allowedSortOrders.includes(sortOrder?.toUpperCase()) ? sortOrder.toUpperCase() : "ASC";
         const initialFetch = req.body.params.initialFetch;
 
         let query = db(`${SCHEMA_HIPMA}.HEALTH_INFORMATION`)
@@ -125,16 +131,20 @@ hipmaRouter.post("/", async (req: Request, res: Response) => {
         if (sortBy) {
             switch (sortBy) {
                 case "hipma_request_type_desc":
-                    query = query.orderBy(`HEALTH_INFORMATION.WHAT_TYPE_OF_REQUEST_DO_YOU_WANT_TO_MAKE_`, sortOrder);
+                    query = query.orderBy(`HEALTH_INFORMATION.WHAT_TYPE_OF_REQUEST_DO_YOU_WANT_TO_MAKE_`, safeSortOrder);
                     break;
                 case "access_personal_health_information":
-                    query = query.orderBy(`HEALTH_INFORMATION.ARE_YOU_REQUESTING_ACCESS_TO_YOUR_OWN_PERSONAL_HEALTH_INFORMATI`, sortOrder);
+                    query = query.orderBy(`HEALTH_INFORMATION.ARE_YOU_REQUESTING_ACCESS_TO_YOUR_OWN_PERSONAL_HEALTH_INFORMATI`, safeSortOrder);
                     break;
                 case "applicant_full_name":
-                    query = query.orderBy(`HEALTH_INFORMATION.FIRST_NAME`, sortOrder);
+                    query = query.orderBy(`HEALTH_INFORMATION.FIRST_NAME`, safeSortOrder);
                     break;
                 default:
-                    query = query.orderBy(`HEALTH_INFORMATION.${sortBy.toUpperCase()}`, sortOrder);
+                    if (allowedSortFields.includes(sortBy.toUpperCase())) {
+                        query = query.orderBy(`HEALTH_INFORMATION.${sortBy.toUpperCase()}`, safeSortOrder);
+                    } else {
+                        query = query.orderBy('HEALTH_INFORMATION.CREATED_AT', safeSortOrder);
+                    }
                     break;
             }
         } else {
@@ -165,7 +175,7 @@ hipmaRouter.post("/", async (req: Request, res: Response) => {
         res.send({data: hipma, total: countSubmissions, all: countAll});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -180,7 +190,7 @@ hipmaRouter.post("/", async (req: Request, res: Response) => {
  * @param {hipma_id} id of request
  * @return json
  */
-hipmaRouter.get("/validateRecord/:hipma_id",[param("hipma_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+hipmaRouter.get("/validateRecord/:hipma_id", checkPermissions("hipma_view"), [param("hipma_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         var hipma_id = Number(req.params.hipma_id);
         var hipma = Object();
@@ -204,7 +214,7 @@ hipmaRouter.get("/validateRecord/:hipma_id",[param("hipma_id").isInt().notEmpty(
         res.json({ status: 200, flagHipma: flagExists, message: message, type: type});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -218,7 +228,7 @@ hipmaRouter.get("/validateRecord/:hipma_id",[param("hipma_id").isInt().notEmpty(
  * @param {hipma_id} id of request
  * @return json
  */
-hipmaRouter.get("/show/:hipma_id",[param("hipma_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+hipmaRouter.get("/show/:hipma_id", checkPermissions("hipma_view"), [param("hipma_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         let hipma_id = Number(req.params.hipma_id);
         db = await helper.getOracleClient(db, DB_CONFIG_HIPMA);
@@ -295,7 +305,7 @@ hipmaRouter.get("/show/:hipma_id",[param("hipma_id").isInt().notEmpty()], async 
         res.json({ hipma: hipma, hipmaFiles: files, fileName:fileName });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -492,7 +502,7 @@ hipmaRouter.post("/store", async (req: Request, res: Response) => {
         if(!_.isEmpty(files)){
             var filesInsert = Array();
             var filesSaved =  true;
-            _.forEach(files, async function(value: any) {
+            for (const value of Object.values(files) as any[]) {
                 var hipmaFiles = Object();
 
                 if(!_.isEmpty(value)){
@@ -501,41 +511,46 @@ hipmaRouter.post("/store", async (req: Request, res: Response) => {
                     hipmaFiles.FILE_NAME = value.file_name;
                     hipmaFiles.FILE_TYPE = value.file_type;
                     hipmaFiles.FILE_SIZE = value.file_size;
-                    let array_file = value.file_data.match(/.{1,4000}/g)
-                    let query = '';
-                    array_file.forEach((element: string) => {
-                        query = query + " DBMS_LOB.APPEND(v_long_text, to_blob(utl_raw.cast_to_raw('" +element+"'))); ";
+                    let array_file = value.file_data.match(/.{1,4000}/g) || [];
+                    // Bind each base64 chunk as a parameter instead of concatenating
+                    // user-supplied file data into the PL/SQL text. Concatenation here
+                    // was an injectable single-quoted literal (see audit CRIT-02).
+                    let appendStatements = '';
+                    array_file.forEach(() => {
+                        appendStatements += " DBMS_LOB.APPEND(v_long_text, to_blob(utl_raw.cast_to_raw(?))); ";
                     });
 
                     filesInsert.push(hipmaFiles);
-                    var filesSaved = await db.raw(`
+                    const inserted = await db.raw(`
                         DECLARE
                             v_long_text BLOB;
                         BEGIN
                             DBMS_LOB.CREATETEMPORARY(v_long_text,true);`
-                            + query +
+                            + appendStatements +
                         `
                             INSERT INTO ${SCHEMA_HIPMA}.HIPMA_FILES (HIPMA_ID, DESCRIPTION, FILE_NAME, FILE_TYPE, FILE_SIZE, FILE_DATA) VALUES (?,?,?,?, ?,v_long_text);
                         END;
-                        `, [hipma_id.id, value.description, value.file_name,value.file_type,value.file_size]);
-                    if(!filesSaved){
-                        res.json({ status:400, message: 'Request could not be processed: HEALTH INFORMATION store attachment failed' });
+                        `, [...array_file, hipma_id.id, value.description, value.file_name, value.file_type, value.file_size]);
+                    if(!inserted){
+                        filesSaved = false;
                     }
                 }
-            });
+            }
 
             if(HipmaSaved && filesSaved){
                 res.json({ status:200, message: 'Request saved' });
+            } else {
+                res.json({ status:400, message: 'Request could not be processed: HEALTH INFORMATION store attachment failed' });
             }
         }else if(HipmaSaved){
             res.json({ status:200, message: 'Request saved' });
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 404,
-            message: 'Request could not be processed ' + e
+            message: 'Request could not be processed'
         });
     }
 });
@@ -546,7 +561,7 @@ hipmaRouter.post("/store", async (req: Request, res: Response) => {
  * @param {hipma_id} id of request
  * @return json
  */
-hipmaRouter.patch("/changeStatus", async (req: Request, res: Response) => {
+hipmaRouter.patch("/changeStatus", checkPermissions("hipma_update"), [body("params.requests").isArray({ min: 1 })], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
         var hipma = req.body.params.requests;
@@ -586,7 +601,7 @@ hipmaRouter.patch("/changeStatus", async (req: Request, res: Response) => {
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -600,27 +615,34 @@ hipmaRouter.patch("/changeStatus", async (req: Request, res: Response) => {
  * @param {hipmaFile_id} id of request
  * @return json
  */
-hipmaRouter.get("/downloadFile/:hipmaFile_id",[param("hipmaFile_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+hipmaRouter.get("/downloadFile/:hipmaFile_id", checkPermissions("hipma_view"), [param("hipmaFile_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
 
     try {
-        var pathFile = "";
-        var fs = require("fs");
         db = await helper.getOracleClient(db, DB_CONFIG_HIPMA);
         var hipmaFile_id = Number(req.params.hipmaFile_id);
+        var sanitize = require("sanitize-filename");
         var hipmaFiles = await db(`${SCHEMA_HIPMA}.HIPMA_FILES`).where("ID", hipmaFile_id).select().first();
-        var buffer = Buffer.from(hipmaFiles.file_data.toString(), 'base64');
-        let safeName = (Math.random() + 1).toString(36).substring(7)+'_'+hipmaFiles.file_name;
-        let pathPublicFront = path.join(__dirname, "../../");
-        pathFile = pathPublicFront+"dist/web/"+safeName+"."+hipmaFiles.file_type;
 
-        fs.writeFileSync(pathFile, buffer);
-
-        if(hipmaFiles) {
-            res.json({ fileName: safeName+"."+hipmaFiles.file_type, fileType: hipmaFiles.file_type, filePath: pathFile});
+        if(!hipmaFiles){
+            return res.status(404).send({ status: 404, message: 'File not found' });
         }
 
+        var buffer = Buffer.from(hipmaFiles.file_data.toString(), 'base64');
+        // Sanitize the stored name/type purely for the download filename — the
+        // bytes are streamed from the DB, never written to the served web root
+        // (see audit CRIT-05).
+        let safeBase = sanitize(String(hipmaFiles.file_name || "file")) || "file";
+        let safeType = String(hipmaFiles.file_type || "").replace(/[^a-zA-Z0-9]/g, "");
+        let downloadName = safeType ? `${safeBase}.${safeType}` : safeBase;
+
+        // Stream the attachment straight to the client.
+        res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        return res.send(buffer);
+
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -634,7 +656,7 @@ hipmaRouter.get("/downloadFile/:hipmaFile_id",[param("hipmaFile_id").isInt().not
  * @param {request}
  * @return file
  */
-hipmaRouter.post("/export", async (req: Request, res: Response) => {
+hipmaRouter.post("/export", checkPermissions("hipma_view"), async (req: Request, res: Response) => {
     try {
         var requests = req.body.params.requests;
         var dateFrom = req.body.params.dateFrom;
@@ -735,7 +757,7 @@ hipmaRouter.post("/export", async (req: Request, res: Response) => {
         res.json({ data:hipma, fileName:fileName });
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -748,7 +770,7 @@ hipmaRouter.post("/export", async (req: Request, res: Response) => {
  *
  * @param {file} name of file
  */
-hipmaRouter.post("/deleteFile", async (req: Request, res: Response) => {
+hipmaRouter.post("/deleteFile", checkPermissions("hipma_delete"), async (req: Request, res: Response) => {
     try {
         var sanitize = require("sanitize-filename");
         var fs = require("fs");
@@ -761,7 +783,7 @@ hipmaRouter.post("/deleteFile", async (req: Request, res: Response) => {
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -769,7 +791,7 @@ hipmaRouter.post("/deleteFile", async (req: Request, res: Response) => {
     }
 });
 
-hipmaRouter.post("/duplicates", async (req: Request, res: Response) => {
+hipmaRouter.post("/duplicates", checkPermissions("hipma_view"), async (req: Request, res: Response) => {
     try {
         var hipmaOriginal = Object();
         var hipmaDuplicate = Object();
@@ -839,7 +861,7 @@ hipmaRouter.post("/duplicates", async (req: Request, res: Response) => {
         res.send({data: hipma});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -855,7 +877,7 @@ hipmaRouter.post("/duplicates", async (req: Request, res: Response) => {
  * @param {hipma_id} id of request
  * @return json
  */
-hipmaRouter.get("/duplicates/details/:duplicate_id",[param("duplicate_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+hipmaRouter.get("/duplicates/details/:duplicate_id", checkPermissions("hipma_view"), [param("duplicate_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         db = await helper.getOracleClient(db, DB_CONFIG_HIPMA);
         let duplicate_id = Number(req.params.duplicate_id);
@@ -1016,7 +1038,7 @@ hipmaRouter.get("/duplicates/details/:duplicate_id",[param("duplicate_id").isInt
         res.json({ hipma: hipma, hipmaDuplicate: hipmaDuplicate, hipmaFiles: files, hipmaFilesDuplicated: filesDuplicated});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -1030,7 +1052,7 @@ hipmaRouter.get("/duplicates/details/:duplicate_id",[param("duplicate_id").isInt
  * @param {duplicate_id} id of request
  * @return json
  */
-hipmaRouter.patch("/duplicates/primary", async (req: Request, res: Response) => {
+hipmaRouter.patch("/duplicates/primary", checkPermissions("hipma_update"), async (req: Request, res: Response) => {
     try {
         var warning = Number(req.body.params.warning);
         var request = Number(req.body.params.request);
@@ -1107,7 +1129,7 @@ hipmaRouter.patch("/duplicates/primary", async (req: Request, res: Response) => 
         }
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -1121,7 +1143,7 @@ hipmaRouter.patch("/duplicates/primary", async (req: Request, res: Response) => 
  * @param {hipma_id} id of warning
  * @return json
  */
-hipmaRouter.get("/duplicates/validateWarning/:duplicate_id",[param("duplicate_id").isInt().notEmpty()], async (req: Request, res: Response) => {
+hipmaRouter.get("/duplicates/validateWarning/:duplicate_id", checkPermissions("hipma_view"), [param("duplicate_id").isInt().notEmpty()], ReturnValidationErrors, async (req: Request, res: Response) => {
     try {
         var duplicate_id = Number(req.params.duplicate_id);
         var warning = Object();
@@ -1145,7 +1167,7 @@ hipmaRouter.get("/duplicates/validateWarning/:duplicate_id",[param("duplicate_id
         res.json({ status: 200, flagWarning: flagExists, message: message, type: type});
 
     } catch(e) {
-        console.log(e);  // debug if needed
+        logger.error("Unhandled error in request handler", e);  // debug if needed
         res.send( {
             status: 400,
             message: 'Request could not be processed'
@@ -1159,25 +1181,11 @@ hipmaRouter.get("/duplicates/validateWarning/:duplicate_id",[param("duplicate_id
  * @return id confirmation number
  */
 function getConfirmationNumber() {
-
-    var id = uniqid();
-
-    // Convert to uppercase for better readability.
-    id = id.toUpperCase().substring(0,9);
-
-    return id;
-}
-
-/**
- * Generate a unix timestamp with microseconds and returns as hexidecimal. This gives us a relatively high certainty of uniquess.
- *
- * @return raw confirmation number
- */
-function uniqid(prefix = "", random = false) {
-    const sec = Date.now() * 1000 + Math.random() * 1000;
-    const id = sec.toString(16).replace(/\./g, "").padEnd(14, "0");
-
-    return `${prefix}${id}${random ? `.${Math.trunc(Math.random() * 100000000)}`:""}`;
+    // Cryptographically-random 9-char confirmation code. Replaces the previous
+    // timestamp + Math.random() "uniqid", which was guessable (see audit LOW-02).
+    // Format (9 uppercase hex chars) and length are unchanged.
+    const crypto = require("crypto");
+    return crypto.randomBytes(5).toString("hex").toUpperCase().substring(0, 9);
 }
 
 /**
@@ -1188,49 +1196,38 @@ function uniqid(prefix = "", random = false) {
  * @return {filesHipma} array with file data
  */
 function saveFile(field_name: any, data: any){
-    var path = "";
-    var fs = require("fs");
+    var sanitize = require("sanitize-filename");
     const allowedExtensions = ["pdf", "doc", "docx", "jpg", "jpeg", "png"]
 
     if(data[field_name] !== 'undefined' && (data[field_name]) && data[field_name]['data'] !== 'undefined'){
 
         var filesHipma = Object();
         var buffer = Buffer.from(data[field_name]['data'], 'base64');
-        let mime = data[field_name]['mime'];
         let name = data[field_name]['name'];
-        let extension = mime.split("/");
-        let fileName = name.split(".");
-        let safeName = (Math.random() + 1).toString(36).substring(7)+'_'+name;
-        path = __dirname+'/'+safeName;
+        // Sanitize the client filename; never derive a disk path from it.
+        let fileName = sanitize(String(name)).split(".");
 
-        fs.writeFileSync(path, buffer);
-
-        // Obtain file's general information
-        var stats = fs.statSync(path);
-
-        // Convert the file size to megabytes
-        var fileSizeInMegabytes = stats.size / (1024*1024);
+        // Validate size from the in-memory buffer BEFORE persisting anything
+        // (the previous code wrote to disk first, then checked). See audit MED-06.
+        var fileSizeInMegabytes = buffer.length / (1024*1024);
 
         if(fileSizeInMegabytes > 10){
+            return filesHipma;
+        }
 
-            fs.unlinkSync(path);
+        // Reject (don't store) files whose extension is not allow-listed, instead
+        // of falling back to the client-supplied extension (see audit MED-06).
+        let fileExtension = (fileName.length > 1 ? fileName[fileName.length - 1] : "").toLowerCase();
 
+        if(!allowedExtensions.includes(fileExtension)){
             return filesHipma;
         }
 
         filesHipma["description"] = field_name;
         filesHipma["file_name"] = fileName[0];
-
-        if(!allowedExtensions.includes(extension[1])){
-            filesHipma["file_type"] = fileName[1];
-        }else{
-            filesHipma["file_type"] = extension[1];
-        }
-
+        filesHipma["file_type"] = fileExtension;
         filesHipma["file_size"] = fileSizeInMegabytes;
         filesHipma["file_data"] = data[field_name]['data'];
-
-        fs.unlinkSync(path);
     }
 
     return filesHipma;

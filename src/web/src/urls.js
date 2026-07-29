@@ -1,9 +1,8 @@
 
 import * as config from "./config";
 
-export const LOGIN_URL = `${config.apiBaseUrl}/api/auth/login`;
 export const AUTH_CHECK_URL = `${config.apiBaseUrl}/api/auth/isAuthenticated`;
-export const LOGOUT_URL = `${config.apiBaseUrl}/api/auth/logout`;
+export const LOGIN_EVENT_URL = `${config.apiBaseUrl}/api/auth/loginEvent`;
 export const PROFILE_URL = `${config.apiBaseUrl}/api/user`;
 export const ROLES_OPTIONS = `${PROFILE_URL}/roles/options`;
 

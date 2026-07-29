@@ -19,5 +19,8 @@
     "forceConsistentCasingInFileNames": true, /* Disallow inconsistently-cased references to the same file. */
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-  }
+  },
+  /* Test files are compiled/run by ts-jest (see jest.config.js), not the
+     production tsc build, so exclude them here. */
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

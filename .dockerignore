@@ -1,3 +1,18 @@
 src/*/node_modules
 src/*/dist
 npm-debug.log
+
+# Never bake secrets into the image — inject env vars at runtime (audit CRIT-07/LOW-05)
+**/.env
+**/.env.development
+**/.env.test
+**/.env.production
+**/.env.local
+
+# Build/VCS cruft that should not be in the image context
+.git
+.github
+
+# Oracle Instant Client is downloaded during the build, not copied from context
+instantclient_21_9
+instantclient_*

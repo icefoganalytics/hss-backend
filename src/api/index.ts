@@ -18,26 +18,49 @@ const routes: Record<string, Router> = {
   "/api/dental": dentalRouter
 };
 
-const maxRequestBodySize = '50mb';
-app.use(express.json({limit: maxRequestBodySize})) // for parsing application/json
-app.use(express.urlencoded({ extended: true, limit: maxRequestBodySize})) // for parsing application/x-www-form-urlencoded
-//app.use(helmet());
-app.use(
-    helmet.contentSecurityPolicy({
-      directives: {
-        'default-src': [ "'self'" ],
-        'base-uri': [ "'self'" ],
-        'block-all-mixed-content': [],
-        'font-src': [ "'self'", 'https:', 'data:' ],
-        'frame-ancestors': [ "'self'" ],
-        'img-src': [ "'self'", 'data:' ],
-        'object-src': [ "'none'" ],
-        'script-src': [ "'self'" ],
-        'script-src-attr': [ "'none'" ],
-        'style-src': [ "'self'", 'https:', "'unsafe-inline'" ]
-      },
-    })
-  );
+// --- Rate limiting: mounted BEFORE the routes so it actually protects them
+// (it was previously registered after the routers, where it had no effect).
+// A single realistic per-IP ceiling replaces the old 5000/min (~unlimited).
+const RateLimit = require('express-rate-limit');
+app.use(RateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 600,                // per-IP request ceiling
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
+// --- Body parsing: a small global limit, with a larger limit applied ONLY to
+// the file-upload endpoints (citizen intake /store + dental /update). The first
+// matching body parser wins, so large bodies are accepted only on these paths.
+const uploadPaths = [
+  "/api/dental/store",
+  "/api/hipma/store",
+  "/api/midwifery/store",
+  "/api/constellation/store",
+  "/api/dental/update",
+];
+app.use(uploadPaths, express.json({ limit: "25mb" }));
+app.use(uploadPaths, express.urlencoded({ extended: true, limit: "25mb" }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+
+// --- Security headers: full helmet(), with the existing CSP configured through it.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      'default-src': [ "'self'" ],
+      'base-uri': [ "'self'" ],
+      'block-all-mixed-content': [],
+      'font-src': [ "'self'", 'https:', 'data:' ],
+      'frame-ancestors': [ "'self'" ],
+      'img-src': [ "'self'", 'data:' ],
+      'object-src': [ "'none'" ],
+      'script-src': [ "'self'" ],
+      'script-src-attr': [ "'none'" ],
+      'style-src': [ "'self'", 'https:', "'unsafe-inline'" ]
+    },
+  },
+}));
 
 // very basic CORS setup
 app.use(cors({
@@ -56,17 +79,6 @@ app.get("/api/healthCheck", (req: Request, res: Response) => {
 for (const url in routes) {
   app.use(url, routes[url]);
 }
-
-// set up rate limiter: maximum of five requests per minute
-var RateLimit = require('express-rate-limit');
-var limiter = RateLimit({
-  windowMs: 1*60*1000, // 1 minute
-  max: 5000
-});
-
-
-// apply rate limiter to all requests
-app.use(limiter);
 
 /*if (config.NODE_ENV !== "production")
   baseWebPath = "/dist/web";

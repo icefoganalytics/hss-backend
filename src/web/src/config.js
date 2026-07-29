@@ -205,3 +205,31 @@ export const sections = [
 ];
 export const environment = process.env.NODE_ENV;
 export const apiBaseUrl = (process.env.NODE_ENV == "test" || process.env.NODE_ENV == "production") ? "" : "http://localhost:3000";
+
+// Auth0 SPA configuration, selected per environment (like apiBaseUrl above)
+// rather than via .env. domain / clientId / audience are public client
+// identifiers (not secrets), so they live here. The `audience` MUST match the
+// API's AUTH_AUDIENCE so the access token is accepted by the backend.
+const auth0Configs = {
+    development: {
+        domain: "icefoganalytics.us.auth0.com",
+        clientId: "UMwwor9ytM9ruJTkX21gqtNHw4g0H4gt",
+        audience: "development",
+    },
+    test: {
+        domain: "",
+        clientId: "",
+        audience: "",
+    },
+    production: {
+        domain: "",
+        clientId: "",
+        audience: "",
+    },
+};
+
+const auth0Config = auth0Configs[process.env.NODE_ENV] || auth0Configs.development;
+
+export const auth0Domain = auth0Config.domain;
+export const auth0ClientId = auth0Config.clientId;
+export const auth0Audience = auth0Config.audience;

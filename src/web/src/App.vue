@@ -158,13 +158,11 @@ import router from "./router";
 //import { mapState } from "vuex";
 import store from "./store";
 import * as config from "./config";
-import { mapState } from "vuex";
 
 export default {
   name: "App",
   components: {},
   computed: {
-    ...mapState("isAuthenticated"),
     username() {
       return store.getters.fullName;
     },

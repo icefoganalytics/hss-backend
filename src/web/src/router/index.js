@@ -380,7 +380,7 @@ router.beforeEach(async (to, from, next) => {
 
   await store.dispatch("checkAuthentication");
   var isAuthenticated = store.getters.isAuthenticated;
-  const userPermissions = store.getters.dbUser.permissions ?? [];
+  const userPermissions = store.getters.dbUser?.permissions ?? [];
 
   // Validate authentication
   if (requiresAuth && !isAuthenticated) {
@@ -389,16 +389,21 @@ router.beforeEach(async (to, from, next) => {
     return;
   }
 
-  // Validate permissions
-  let validate = false;
-  if (userPermissions.length > 0) {
-    validate = permissions.every((x) => {
-      return userPermissions.find((p) => p.permission_name === x) !== undefined;
-    });
-  }
-  
+  // Validate permissions. A route that requires none passes for any
+  // authenticated user (permissions.every over [] is true).
+  const validate = permissions.every((x) => {
+    return userPermissions.some((p) => p.permission_name === x);
+  });
+
   if (!validate) {
-    next("/");
+    // Not permitted for this route — send home, unless we're already going
+    // there (guard against an infinite redirect loop when the user has no
+    // matching permissions).
+    if (to.path !== "/") {
+      next("/");
+    } else {
+      next();
+    }
     return;
   }
 
