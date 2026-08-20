@@ -87,16 +87,21 @@ export const DB_CONFIG_CONSTELLATION = {
     database: DB_NAME,
     requestTimeout: 120000,
     instanceName: DB_SERVICE,
-    connectString: `(DESCRIPTION=                   
+    // EXPIRE_TIME enables TNS dead-connection detection: the server probes idle
+    // sessions every N minutes and tears down ones whose client has vanished,
+    // and it keeps the TCP connection warm so firewalls don't silently drop it.
+    // This is the proper cure for the stale connections the old per-request
+    // `select sysdate from dual` probe was hand-rolling around.
+    connectString: `(DESCRIPTION=(EXPIRE_TIME=1)
         (ADDRESS_LIST=            
         (ADDRESS=(PROTOCOL=TCP)              
         (HOST=${DB_HOST})(PORT=${DB_PORT}) ) )           
         (CONNECT_DATA=(SERVICE_NAME=${DB_SERVICE}) ) )`
   },
   pool: {
-    min: 1,
-    max: 100,
-    propagateCreateError: false,
+    min: 0,
+    max: 10,
+    propagateCreateError: true,
     idleTimeoutMillis: 120000,
     reapIntervalMillis: 10000
   },
@@ -113,16 +118,21 @@ export const DB_CONFIG_MIDWIFERY = {
     database: DB_NAME,
     requestTimeout: 120000,
     instanceName: DB_SERVICE,
-    connectString: `(DESCRIPTION=                   
+    // EXPIRE_TIME enables TNS dead-connection detection: the server probes idle
+    // sessions every N minutes and tears down ones whose client has vanished,
+    // and it keeps the TCP connection warm so firewalls don't silently drop it.
+    // This is the proper cure for the stale connections the old per-request
+    // `select sysdate from dual` probe was hand-rolling around.
+    connectString: `(DESCRIPTION=(EXPIRE_TIME=1)
         (ADDRESS_LIST=            
         (ADDRESS=(PROTOCOL=TCP)              
         (HOST=${DB_HOST})(PORT=${DB_PORT}) ) )           
         (CONNECT_DATA=(SERVICE_NAME=${DB_SERVICE}) ) )`
   },
   pool: {
-    min: 1,
-    max: 100,
-    propagateCreateError: false,
+    min: 0,
+    max: 10,
+    propagateCreateError: true,
     idleTimeoutMillis: 120000,
     reapIntervalMillis: 10000
   },
@@ -138,16 +148,21 @@ export const DB_CONFIG_HIPMA = {
     database: DB_NAME,
     requestTimeout: 120000,
     instanceName: DB_SERVICE,
-    connectString: `(DESCRIPTION=                   
+    // EXPIRE_TIME enables TNS dead-connection detection: the server probes idle
+    // sessions every N minutes and tears down ones whose client has vanished,
+    // and it keeps the TCP connection warm so firewalls don't silently drop it.
+    // This is the proper cure for the stale connections the old per-request
+    // `select sysdate from dual` probe was hand-rolling around.
+    connectString: `(DESCRIPTION=(EXPIRE_TIME=1)
         (ADDRESS_LIST=            
         (ADDRESS=(PROTOCOL=TCP)              
         (HOST=${DB_HOST})(PORT=${DB_PORT}) ) )           
         (CONNECT_DATA=(SERVICE_NAME=${DB_SERVICE}) ) )`
   },
   pool: {
-    min: 1,
-    max: 100,
-    propagateCreateError: false,
+    min: 0,
+    max: 10,
+    propagateCreateError: true,
     idleTimeoutMillis: 120000,
     reapIntervalMillis: 10000
   },
@@ -163,16 +178,21 @@ export const DB_CONFIG_GENERAL = {
     database: DB_NAME,
     requestTimeout: 120000,
     instanceName: DB_SERVICE,
-    connectString: `(DESCRIPTION=                   
+    // EXPIRE_TIME enables TNS dead-connection detection: the server probes idle
+    // sessions every N minutes and tears down ones whose client has vanished,
+    // and it keeps the TCP connection warm so firewalls don't silently drop it.
+    // This is the proper cure for the stale connections the old per-request
+    // `select sysdate from dual` probe was hand-rolling around.
+    connectString: `(DESCRIPTION=(EXPIRE_TIME=1)
         (ADDRESS_LIST=            
         (ADDRESS=(PROTOCOL=TCP)              
         (HOST=${DB_HOST})(PORT=${DB_PORT}) ) )           
         (CONNECT_DATA=(SERVICE_NAME=${DB_SERVICE}) ) )`
   },
   pool: {
-    min: 3,
-    max: 100,
-    propagateCreateError: false,
+    min: 0,
+    max: 10,
+    propagateCreateError: true,
     idleTimeoutMillis: 120000,
     reapIntervalMillis: 10000
   },
@@ -188,16 +208,21 @@ export const DB_CONFIG_DENTAL = {
     database: DB_NAME,
     requestTimeout: 120000,
     instanceName: DB_SERVICE,
-    connectString: `(DESCRIPTION=                   
+    // EXPIRE_TIME enables TNS dead-connection detection: the server probes idle
+    // sessions every N minutes and tears down ones whose client has vanished,
+    // and it keeps the TCP connection warm so firewalls don't silently drop it.
+    // This is the proper cure for the stale connections the old per-request
+    // `select sysdate from dual` probe was hand-rolling around.
+    connectString: `(DESCRIPTION=(EXPIRE_TIME=1)
         (ADDRESS_LIST=            
         (ADDRESS=(PROTOCOL=TCP)              
         (HOST=${DB_HOST})(PORT=${DB_PORT}) ) )           
         (CONNECT_DATA=(SERVICE_NAME=${DB_SERVICE}) ) )`
   },
   pool: {
-    min: 3,
-    max: 100,
-    propagateCreateError: false,
+    min: 0,
+    max: 10,
+    propagateCreateError: true,
     idleTimeoutMillis: 120000,
     reapIntervalMillis: 10000
   },
