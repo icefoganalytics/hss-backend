@@ -1,33 +1,42 @@
 import express, { Request, Response, Router } from "express";
 import cors from "cors";
 import helmet from "helmet";
-import path from 'path';
-import { userRouter, constellationRouter, midwiferyRouter, hipmaRouter, generalRouter, dentalRouter } from "./routes";
-import * as config from './config';
+import path from "path";
+import {
+  userRouter,
+  constellationRouter,
+  midwiferyRouter,
+  hipmaRouter,
+  generalRouter,
+  dentalRouter,
+} from "./routes";
+import * as config from "./config";
 import { doHealthCheck } from "./utils/healthCheck";
-import { configureAuthentication } from "./routes/auth"
+import { configureAuthentication } from "./routes/auth";
 
 const app = express();
-const sufixPath = '/index.html';
+const sufixPath = "/index.html";
 const routes: Record<string, Router> = {
   "/api/user": userRouter,
   "/api/constellation": constellationRouter,
   "/api/midwifery": midwiferyRouter,
   "/api/hipma": hipmaRouter,
   "/api/general": generalRouter,
-  "/api/dental": dentalRouter
+  "/api/dental": dentalRouter,
 };
 
 // --- Rate limiting: mounted BEFORE the routes so it actually protects them
 // (it was previously registered after the routers, where it had no effect).
 // A single realistic per-IP ceiling replaces the old 5000/min (~unlimited).
-const RateLimit = require('express-rate-limit');
-app.use(RateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 600,                // per-IP request ceiling
-  standardHeaders: true,
-  legacyHeaders: false,
-}));
+const RateLimit = require("express-rate-limit");
+app.use(
+  RateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 600, // per-IP request ceiling
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
 
 // --- Body parsing: a small global limit, with a larger limit applied ONLY to
 // the file-upload endpoints (citizen intake /store + dental /update). The first
@@ -45,29 +54,35 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 // --- Security headers: full helmet(), with the existing CSP configured through it.
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      'default-src': [ "'self'" ],
-      'base-uri': [ "'self'" ],
-      'block-all-mixed-content': [],
-      'font-src': [ "'self'", 'https:', 'data:' ],
-      'frame-ancestors': [ "'self'" ],
-      'img-src': [ "'self'", 'data:' ],
-      'object-src': [ "'none'" ],
-      'script-src': [ "'self'" ],
-      'script-src-attr': [ "'none'" ],
-      'style-src': [ "'self'", 'https:', "'unsafe-inline'" ]
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        "default-src": ["'self'", config.FRONTEND_URL, config.AUTH_ISSUER],
+        "base-uri": ["'self'"],
+        "block-all-mixed-content": [],
+        "font-src": ["'self'", "https:", "data:"],
+        "frame-ancestors": ["'self'"],
+        "img-src": ["'self'", "data:", "https:", "blob:"],
+        "object-src": ["'none'"],
+        "script-src": ["'self'" /* "'unsafe-eval'" */],
+        "script-src-attr": ["'none'"],
+        "style-src": ["'self'", "https:", "'unsafe-inline'"],
+        "worker-src": ["'self'", "blob:"],
+        "connect-src": ["'self'", config.FRONTEND_URL, config.AUTH_ISSUER],
+      },
     },
-  },
-}));
+  }),
+);
 
 // very basic CORS setup
-app.use(cors({
-  origin: config.FRONTEND_URL,
-  optionsSuccessStatus: 200,
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: config.FRONTEND_URL,
+    optionsSuccessStatus: 200,
+    credentials: true,
+  }),
+);
 
 configureAuthentication(app);
 
@@ -88,8 +103,8 @@ app.use(express.static(path.join(__dirname, "web")));
 
 // if no other routes match, just send the front-end
 app.use((req: Request, res: Response) => {
-  res.sendFile(path.join(__dirname, "web") + sufixPath)
-})
+  res.sendFile(path.join(__dirname, "web") + sufixPath);
+});
 
 app.listen(config.API_PORT, () => {
   console.log(`API listenting on port ${config.API_PORT}`);
