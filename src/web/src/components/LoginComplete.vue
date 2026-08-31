@@ -13,9 +13,13 @@ export default {
     try {
       await store.dispatch("handleAuthCallback");
     } catch (e) {
-      console.error(e);
+      // Auth0 puts the real reason in error/error_description; the bare
+      // message ("Unauthorized") on its own isn't diagnosable.
+      console.error("Auth callback failed:", e.error, e.error_description || e.message, e);
     }
-    router.push("/");
+    // The global guard may redirect this push (e.g. to /sign-in when the
+    // callback failed); that's expected, so swallow the navigation rejection.
+    router.push("/").catch(() => {});
   }
 };
 </script>

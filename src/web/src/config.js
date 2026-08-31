@@ -1,4 +1,4 @@
-export const applicationName = "Health and social services";
+export const applicationName = "Health and Social Services";
 export const applicationIcon = "mdi-cash-register";
 export const hasSidebar = true;
 export const hasSidebarClosable = false;
@@ -176,9 +176,9 @@ const auth0Configs = {
     audience: "generic-dev",
   },
   production: {
-    domain: "",
-    clientId: "",
-    audience: "",
+    domain: "https://yukon.eu.auth0.com",
+    clientId: "lzjEtuxRpZmSP3dPbNMsnj7sXnz4D7OT",
+    audience: "generic-production",
   },
 };
 
